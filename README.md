@@ -278,17 +278,52 @@ npm run test:e2e:slow-network
 
 ## Environment Variables
 
+### Agent and CI (general)
+
 | Variable | Required | Description |
 |---|---:|---|
-| `AI_PROVIDER` | No | Provider selection: `mock`, `anthropic`, `openai`, `google`, `ollama` (default: `mock`) |
-| `AI_MODEL` | No | Model name passed to the selected provider |
 | `AGENT_RESULTS_JSON_PATH` | No | Path to Playwright JSON results file (default: `test-results/results.json`) |
 | `AGENT_CONFIDENCE_THRESHOLD` | No | Minimum confidence gate for downstream decisions (default: `0.75`) |
 | `AGENT_MAX_FAILURES_PER_RUN` | No | Maximum failures to process per run (default: `3`) |
 | `AGENT_ENABLE_IN_CI` | No | Enable agent execution in CI (default: `false` for Phase 1 dev mode) |
+| `DEMO_APP_URL` | Yes (CI) | Public URL of the deployed TaskFlow app used by Playwright in GitHub Actions |
+| `BASE_URL` | No | Override target URL for local runs; defaults to `http://localhost:3000` in the Playwright config |
+| `QA_MODE` | No | Optional mode for showcase test runs (`none`, `selector-change`, `logic-bug`, `auth-break`, `slow-network`) |
+| `GITHUB_TOKEN` | Yes (CI, provided) | Provided automatically by GitHub Actions for Issues/PRs |
+| `GITHUB_REPOSITORY` | Yes (CI, provided) | `owner/repo` used for GitHub API calls |
+| `GITHUB_RUN_ID` | Yes (CI, provided) | Used to construct the CI run URL for linking in Issues/PRs |
+| `GITHUB_REF_NAME` | Yes (CI, provided) | Branch name used in issue context |
+| `GITHUB_SHA` | Yes (CI, provided) | Commit SHA used in issue context |
+
+### LLM routing (all providers)
+
+| Variable | Required | Description |
+|---|---:|---|
+| `AI_PROVIDER` | No | Provider selection: `mock`, `anthropic`, `openai`, `google`, `ollama` (default: `mock`) |
+| `AI_MODEL` | No | Model name passed to the selected provider |
+
+### Anthropic (Claude)
+
+| Variable | Required | Description |
+|---|---:|---|
 | `ANTHROPIC_API_KEY` | Conditionally | Required when `AI_PROVIDER=anthropic` |
+
+### OpenAI
+
+| Variable | Required | Description |
+|---|---:|---|
 | `OPENAI_API_KEY` | Conditionally | Required when `AI_PROVIDER=openai` |
+
+### Google
+
+| Variable | Required | Description |
+|---|---:|---|
 | `GOOGLE_API_KEY` | Conditionally | Required when `AI_PROVIDER=google` |
+
+### Ollama (local)
+
+| Variable | Required | Description |
+|---|---:|---|
 | `OLLAMA_BASE_URL` | Conditionally | Ollama base URL when `AI_PROVIDER=ollama` (default: `http://127.0.0.1:11434`) |
 | `OLLAMA_REQUEST_TIMEOUT_MS` | Optional | Abort Ollama `/api/generate` after this many ms (`0` or unset = no limit). Large prompts on CPU can take many minutes |
 | `AGENT_OLLAMA_MAX_DOM_CHARS` | Optional | Cap DOM snapshot chars for `ollama` (default `8000`; smaller = faster CPU runs) |
@@ -298,14 +333,6 @@ npm run test:e2e:slow-network
 | `AGENT_OLLAMA_NUM_CTX_MIN` | Optional | Lower bound for Ollama `num_ctx` (default `4096`) |
 | `AGENT_OLLAMA_NUM_CTX_MAX` | Optional | Upper bound for Ollama `num_ctx` (default `16384`; trim prompts before raising) |
 | `OLLAMA_API_KEY` | Optional | Optional key if Ollama endpoint is behind auth/proxy |
-| `DEMO_APP_URL` | Yes (CI) | Public URL of the deployed TaskFlow app used by Playwright in GitHub Actions |
-| `BASE_URL` | No | Override target URL for local runs; defaults to `http://localhost:3000` in the Playwright config |
-| `QA_MODE` | No | Optional mode for showcase test runs (`none`, `selector-change`, `logic-bug`, `auth-break`, `slow-network`) |
-| `GITHUB_TOKEN` | Yes (CI, provided) | Provided automatically by GitHub Actions for Issues/PRs |
-| `GITHUB_REPOSITORY` | Yes (CI, provided) | `owner/repo` used for GitHub API calls |
-| `GITHUB_RUN_ID` | Yes (CI, provided) | Used to construct the CI run URL for linking in Issues/PRs |
-| `GITHUB_REF_NAME` | Yes (CI, provided) | Branch name used in issue context |
-| `GITHUB_SHA` | Yes (CI, provided) | Commit SHA used in issue context |
 
 ## Running a Live Demo
 
