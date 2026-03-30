@@ -1,4 +1,5 @@
 import type { LlmClient } from './types.js'
+import { logger } from '../logger.js'
 
 interface CursorChoice {
   message?: {
@@ -26,6 +27,15 @@ export class CursorClient implements LlmClient {
     maxTokens: number
     temperature: number
   }): Promise<string> {
+    logger.debug('Cursor request started', {
+      model: this.model,
+      baseUrl: this.baseUrl,
+      maxTokens: input.maxTokens,
+      temperature: input.temperature,
+      promptChars: input.prompt.length,
+      hasAuthHeader: Boolean(this.apiKey),
+    })
+
     const headers: Record<string, string> = {
       'content-type': 'application/json',
     }
@@ -54,6 +64,7 @@ export class CursorClient implements LlmClient {
       throw new Error(`Cursor classify request failed: ${response.status} ${text}`)
     }
 
+    logger.debug('Cursor request succeeded', { status: response.status })
     const data = (await response.json()) as CursorResponse
     const content = data.choices?.[0]?.message?.content?.trim()
     if (!content) {

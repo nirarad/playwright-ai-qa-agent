@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
 import type { AgentConfig, FailureContext } from './types.js'
+import { logger } from './logger.js'
 
 interface PlaywrightAttachment {
   name?: string
@@ -92,9 +93,11 @@ const collectFailuresFromSuite = (suite: PlaywrightSuite, failures: FailureConte
 
 export const extractFailures = (config: AgentConfig): FailureContext[] => {
   if (!existsSync(config.paths.resultsJson)) {
+    logger.warn('Results file not found', { path: config.paths.resultsJson })
     return []
   }
 
+  logger.debug('Reading Playwright results', { path: config.paths.resultsJson })
   const raw = readFileSync(config.paths.resultsJson, 'utf-8')
   const parsed = JSON.parse(raw) as PlaywrightJson
   const failures: FailureContext[] = []
@@ -103,5 +106,6 @@ export const extractFailures = (config: AgentConfig): FailureContext[] => {
     collectFailuresFromSuite(suite, failures)
   }
 
+  logger.info('Failure extraction complete', { failureCount: failures.length })
   return failures
 }

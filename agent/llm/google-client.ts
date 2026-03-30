@@ -1,4 +1,5 @@
 import type { LlmClient } from './types.js'
+import { logger } from '../logger.js'
 
 interface GooglePart {
   text?: string
@@ -32,6 +33,14 @@ export class GoogleClient implements LlmClient {
     maxTokens: number
     temperature: number
   }): Promise<string> {
+    logger.debug('Google request started', {
+      model: this.model,
+      baseUrl: this.baseUrl,
+      maxTokens: input.maxTokens,
+      temperature: input.temperature,
+      promptChars: input.prompt.length,
+    })
+
     const response = await fetch(
       `${this.baseUrl}/${this.model}:generateContent?key=${this.apiKey}`,
       {
@@ -59,6 +68,7 @@ export class GoogleClient implements LlmClient {
       throw new Error(`Google classify request failed: ${response.status} ${text}`)
     }
 
+    logger.debug('Google request succeeded', { status: response.status })
     const data = (await response.json()) as GoogleResponse
     const content = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
     if (!content) {

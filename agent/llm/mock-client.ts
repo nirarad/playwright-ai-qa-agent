@@ -1,26 +1,23 @@
 import type { ClassificationResult } from '../types.js'
+import { logger } from '../logger.js'
 import type { LlmClient } from './types.js'
 
-const classifyFromPrompt = (prompt: string): ClassificationResult => {
-  const input = prompt.toLowerCase()
+const extractSignals = (prompt: string): string => {
+  const errorMatch = prompt.match(/Error:\s*([\s\S]*?)\nStack:/)
+  const stackMatch = prompt.match(/Stack:\s*([\s\S]*?)\n\nTest source:/)
+  const sourceMatch = prompt.match(/Test source:\s*([\s\S]*)$/)
+  return `${errorMatch?.[1] ?? ''}\n${stackMatch?.[1] ?? ''}\n${sourceMatch?.[1] ?? ''}`.toLowerCase()
+}
 
-  if (
-    input.includes('tohaveurl') ||
-    input.includes('expected') ||
-    input.includes('received')
-  ) {
-    return {
-      category: 'REAL_BUG',
-      confidence: 0.84,
-      reason: 'Assertion mismatch indicates behavior diverges from expectation.',
-      suggestedFix: null,
-    }
-  }
+const classifyFromPrompt = (prompt: string): ClassificationResult => {
+  const input = extractSignals(prompt)
 
   if (
     input.includes('getbytestid') ||
     input.includes('locator') ||
-    input.includes('strict mode violation')
+    input.includes('strict mode violation') ||
+    input.includes('waiting for locator') ||
+    input.includes('element is not attached')
   ) {
     return {
       category: 'BROKEN_LOCATOR',
@@ -30,11 +27,38 @@ const classifyFromPrompt = (prompt: string): ClassificationResult => {
     }
   }
 
-  if (input.includes('timeout') || input.includes('net::err_')) {
+  if (
+    input.includes('net::err_') ||
+    input.includes('econnrefused') ||
+    input.includes('connection refused')
+  ) {
+    return {
+      category: 'ENV_ISSUE',
+      confidence: 0.78,
+      reason: 'Connectivity or environment setup issue is likely.',
+      suggestedFix: null,
+    }
+  }
+
+  if (input.includes('timeout') || input.includes('timed out')) {
     return {
       category: 'FLAKY',
-      confidence: 0.7,
+      confidence: 0.72,
       reason: 'Timing or environment instability is likely.',
+      suggestedFix: null,
+    }
+  }
+
+  if (
+    input.includes('tohaveurl') ||
+    input.includes('toequal') ||
+    input.includes('tobevisible') ||
+    (input.includes('expected') && input.includes('received'))
+  ) {
+    return {
+      category: 'REAL_BUG',
+      confidence: 0.84,
+      reason: 'Assertion mismatch indicates behavior diverges from expectation.',
       suggestedFix: null,
     }
   }
@@ -55,6 +79,12 @@ export class MockClient implements LlmClient {
   }): Promise<string> {
     void input.maxTokens
     void input.temperature
-    return JSON.stringify(classifyFromPrompt(input.prompt))
+    const result = classifyFromPrompt(input.prompt)
+    logger.debug('Mock classifier produced result', {
+      category: result.category,
+      confidence: result.confidence,
+      reason: result.reason,
+    })
+    return JSON.stringify(result)
   }
 }

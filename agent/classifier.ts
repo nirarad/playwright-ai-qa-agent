@@ -1,4 +1,5 @@
 import { getAgentConfig } from './config.js'
+import { logger } from './logger.js'
 import { getLlmClient } from './llm/factory.js'
 import type { ClassificationResult, FailureCategory, FailureContext } from './types.js'
 
@@ -70,10 +71,26 @@ ${ctx.errorStack}
 Test source:
 ${ctx.testSource}`
 
+  logger.debug('Submitting classification request', {
+    provider: config.llm.provider,
+    model: config.llm.model,
+    testName: ctx.testName,
+    maxTokens: config.llm.maxTokens.classify,
+    temperature: config.llm.temperature.classify,
+    promptChars: prompt.length,
+    hasStack: Boolean(ctx.errorStack),
+  })
+
   const raw = await llm.classifyFailure({
     prompt,
     maxTokens: config.llm.maxTokens.classify,
     temperature: config.llm.temperature.classify,
+  })
+
+  logger.debug('Received classification raw response', {
+    provider: config.llm.provider,
+    model: config.llm.model,
+    responseChars: raw.length,
   })
 
   const parsed = JSON.parse(raw) as unknown

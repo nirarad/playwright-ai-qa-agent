@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "agent": "tsx orchestrator.ts",
-    "agent:local-results": "set \"AGENT_RESULTS_JSON_PATH=../test-results/results.json\" && tsx orchestrator.ts",
+    "agent:local-results": "set \"AGENT_RESULTS_JSON_PATH=../test-results/results.json\" && set \"AGENT_LOG_LEVEL=debug\" && tsx orchestrator.ts",
     "test": "node -e \"process.exit(0)\""
   },
   "devDependencies": {

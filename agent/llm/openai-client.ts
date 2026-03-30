@@ -1,4 +1,5 @@
 import type { LlmClient } from './types.js'
+import { logger } from '../logger.js'
 
 interface OpenAiChoice {
   message?: {
@@ -26,6 +27,14 @@ export class OpenAiClient implements LlmClient {
     maxTokens: number
     temperature: number
   }): Promise<string> {
+    logger.debug('OpenAI request started', {
+      model: this.model,
+      baseUrl: this.baseUrl,
+      maxTokens: input.maxTokens,
+      temperature: input.temperature,
+      promptChars: input.prompt.length,
+    })
+
     const response = await fetch(`${this.baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
@@ -50,6 +59,7 @@ export class OpenAiClient implements LlmClient {
       throw new Error(`OpenAI classify request failed: ${response.status} ${text}`)
     }
 
+    logger.debug('OpenAI request succeeded', { status: response.status })
     const data = (await response.json()) as OpenAiResponse
     const content = data.choices?.[0]?.message?.content?.trim()
     if (!content) {

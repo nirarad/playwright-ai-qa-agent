@@ -1,4 +1,5 @@
 import type { LlmClient } from './types.js'
+import { logger } from '../logger.js'
 
 interface AnthropicContentBlock {
   type: string
@@ -23,6 +24,13 @@ export class AnthropicClient implements LlmClient {
     maxTokens: number
     temperature: number
   }): Promise<string> {
+    logger.debug('Anthropic request started', {
+      model: this.model,
+      maxTokens: input.maxTokens,
+      temperature: input.temperature,
+      promptChars: input.prompt.length,
+    })
+
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -48,6 +56,7 @@ export class AnthropicClient implements LlmClient {
       throw new Error(`Anthropic classify request failed: ${response.status} ${text}`)
     }
 
+    logger.debug('Anthropic request succeeded', { status: response.status })
     const data = (await response.json()) as AnthropicResponse
     const textBlock = data.content?.find((block) => block.type === 'text' && block.text)
     if (!textBlock?.text) {
