@@ -11,6 +11,10 @@ Implement the AI failure agent in small, verifiable steps. The agent must be:
 
 This checklist intentionally focuses on *implementation steps*, not redesign.
 
+Phase order and rollout policy are defined in
+`docs/plan-03-ai-failure-agent.md` under **Phased Delivery (Rollout Order)**.
+This checklist executes that plan and does not redefine phase policy.
+
 ---
 
 ## Success Criteria (Definition of Done)
@@ -309,9 +313,7 @@ Use this mode for local development and demo iteration.
 	3. Inspect logs/output and action gating.
 	4. Refine prompts/config and repeat.
 - **Recommended dev defaults**:
-	- Start with reporter enabled and healer disabled:
-		- `AGENT_ENABLE_BUG_ISSUE=true`
-		- `AGENT_ENABLE_HEAL_PR=false`
+	- Use action toggles that match the current rollout phase from `plan-03`.
 	- Keep cost and noise low:
 		- `AGENT_MAX_FAILURES_PER_RUN=1`
 		- confidence threshold at or above `0.75`
@@ -335,7 +337,7 @@ Before enabling agent actions in GitHub Actions, enforce these guardrails.
 - **Write-action gates**:
 	- `AGENT_ENABLE_BUG_ISSUE=true|false`
 	- `AGENT_ENABLE_HEAL_PR=true|false`
-	- Keep healer disabled until reporter quality is validated.
+	- Toggle values must follow the active phase policy in `plan-03`.
 - **Confidence + volume controls**:
 	- Enforce `AGENT_CONFIDENCE_THRESHOLD` before any write action.
 	- Enforce `AGENT_MAX_FAILURES_PER_RUN` hard cap.

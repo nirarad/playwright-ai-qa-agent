@@ -38,6 +38,9 @@ Rationale:
 - Issues are lower-risk than auto-generated code changes.
 - Healing should be enabled only after classification quality is proven.
 
+Detailed implementation tasks live in
+`docs/plan-03.1-implementation-checklist.md`.
+
 ---
 
 ## Repo Structure to Create
