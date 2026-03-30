@@ -4,7 +4,7 @@ AI-powered QA pipeline: Playwright tests + an LLM-driven failure agent that clas
 
 ## Badges
 
-[![CI](https://github.com/YOUR_ORG/playwright-ai-qa-agent/actions/workflows/playwright.yml/badge.svg)](https://github.com/YOUR_ORG/playwright-ai-qa-agent/actions/workflows/playwright.yml) ![License: MIT](https://img.shields.io/badge/License-MIT-green.svg) ![Node](https://img.shields.io/badge/node-20.x-339933?logo=node.js&logoColor=white)
+[CI](https://github.com/YOUR_ORG/playwright-ai-qa-agent/actions/workflows/playwright.yml) License: MIT Node
 
 ## What This Is
 
@@ -42,14 +42,16 @@ Run Playwright tests (JSON + HTML reports, screenshots/traces)
 
 ## Tech Stack
 
-| Layer | Technology |
-|---|---|
-| Test framework | Playwright (`@playwright/test`) |
-| Language | TypeScript (Node runtime) |
-| CI | GitHub Actions |
-| AI model | Configurable (`mock`, `anthropic`, `openai`, `google`, `ollama`) |
-| Bug tracking | GitHub Issues + Pull Requests |
-| Deployment | Vercel (demo app target) |
+
+| Layer          | Technology                                                       |
+| -------------- | ---------------------------------------------------------------- |
+| Test framework | Playwright (`@playwright/test`)                                  |
+| Language       | TypeScript (Node runtime)                                        |
+| CI             | GitHub Actions                                                   |
+| AI model       | Configurable (`mock`, `anthropic`, `openai`, `google`, `ollama`) |
+| Bug tracking   | GitHub Issues + Pull Requests                                    |
+| Deployment     | Vercel (demo app target)                                         |
+
 
 ## How It Works
 
@@ -64,12 +66,14 @@ Run Playwright tests (JSON + HTML reports, screenshots/traces)
 
 ## Failure Classification
 
-| Category | What triggers it | Automated action taken |
-|---|---|---|
+
+| Category         | What triggers it                                                                                                | Automated action taken                                                      |
+| ---------------- | --------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
 | `BROKEN_LOCATOR` | Element not found, selector mismatch, `data-testid` changed, or DOM shape changed so locators no longer resolve | Open PR that updates the failing test’s locator strategy (confidence-gated) |
-| `REAL_BUG` | Assertions fail due to application logic regression (auth/task/profile flows do not behave as expected) | Create GitHub Issue with full failure context (confidence-gated) |
-| `FLAKY` | Timing/race conditions, intermittent delays, or order-dependent behavior | Log only |
-| `ENV_ISSUE` | CI/environment configuration problems, missing env vars, or external connectivity-like failures | Log only |
+| `REAL_BUG`       | Assertions fail due to application logic regression (auth/task/profile flows do not behave as expected)         | Create GitHub Issue with full failure context (confidence-gated)            |
+| `FLAKY`          | Timing/race conditions, intermittent delays, or order-dependent behavior                                        | Log only                                                                    |
+| `ENV_ISSUE`      | CI/environment configuration problems, missing env vars, or external connectivity-like failures                 | Log only                                                                    |
+
 
 ## Demo App
 
@@ -83,12 +87,14 @@ TaskFlow is a deliberately small task manager with auth and a few core flows tha
 <!-- Add screenshot here -->
 ```
 
-| Break Mode | What it simulates | Expected agent response |
-|---|---|---|
-| `selector-change` | Internal app `data-testid` changes (tasks/profile) that break locators while login remains stable | `BROKEN_LOCATOR` → PR |
-| `logic-bug` | App logic bug (task creation behavior is wrong) | `REAL_BUG` → Issue |
-| `slow-network` | Artificial latency that makes tests timing-sensitive | `FLAKY` → log only |
-| `auth-break` | Login always fails regardless of credentials | `REAL_BUG` → Issue |
+
+| Break Mode        | What it simulates                                                                                 | Expected agent response |
+| ----------------- | ------------------------------------------------------------------------------------------------- | ----------------------- |
+| `selector-change` | Internal app `data-testid` changes (tasks/profile) that break locators while login remains stable | `BROKEN_LOCATOR` → PR   |
+| `logic-bug`       | App logic bug (task creation behavior is wrong)                                                   | `REAL_BUG` → Issue      |
+| `slow-network`    | Artificial latency that makes tests timing-sensitive                                              | `FLAKY` → log only      |
+| `auth-break`      | Login always fails regardless of credentials                                                      | `REAL_BUG` → Issue      |
+
 
 ### `qaMode` Session Injection
 
@@ -163,20 +169,22 @@ git clone https://github.com/YOUR_ORG/playwright-ai-qa-agent.git
 cd playwright-ai-qa-agent
 ```
 
-2. Install dependencies.
+1. Install dependencies.
 
 ```bash
 npm ci
 ```
 
-3. Set environment variables.
+1. Set environment variables.
 
-| Variable | Where | Example |
-|---|---|---|
-| `ANTHROPIC_API_KEY` | local `.env` or GitHub Actions Secret | `YOUR_ANTHROPIC_API_KEY` |
-| `DEMO_APP_URL` | GitHub Actions Secret | `https://YOUR_VERCEL_URL.vercel.app` |
 
-4. Run the demo app locally.
+| Variable            | Where                                 | Example                              |
+| ------------------- | ------------------------------------- | ------------------------------------ |
+| `ANTHROPIC_API_KEY` | local `.env` or GitHub Actions Secret | `YOUR_ANTHROPIC_API_KEY`             |
+| `DEMO_APP_URL`      | GitHub Actions Secret                 | `https://YOUR_VERCEL_URL.vercel.app` |
+
+
+1. Run the demo app locally.
 
 ```bash
 cd demo-app
@@ -184,13 +192,13 @@ npm install
 npm run dev
 ```
 
-5. Run Playwright tests.
+1. Run Playwright tests.
 
 ```bash
 npm run test:e2e:none
 ```
 
-6. Trigger the agent manually (after a failing test run has produced `test-results/results.json`).
+1. Trigger the agent manually (after a failing test run has produced `test-results/results.json`).
 
 ```bash
 npm run agent
@@ -252,7 +260,7 @@ docker run --rm --gpus all --cpus=8 -p 11434:11434 -e OLLAMA_PULL_MODEL=qwen2.5:
 
 Run via terminal (detached):
 
-The image builds with the same defaults (`11434`, `OLLAMA_PULL_MODEL=qwen2.5:7b`); models persist in the `ollama-data` volume. Compose allows **8 CPUs** by default and requests **NVIDIA GPUs** for inference; override CPUs with e.g. `$env:OLLAMA_DOCKER_CPUS='6'` before `docker compose` if you want to leave headroom for the host. Compose sets **`OLLAMA_KEEP_ALIVE=30m`** and **`shm_size: 2gb`**.
+The image builds with the same defaults (`11434`, `OLLAMA_PULL_MODEL=qwen2.5:7b`); models persist in the `ollama-data` volume. Compose allows **8 CPUs** by default and requests **NVIDIA GPUs** for inference; override CPUs with e.g. `$env:OLLAMA_DOCKER_CPUS='6'` before `docker compose` if you want to leave headroom for the host. Compose sets `**OLLAMA_KEEP_ALIVE=30m`** and `**shm_size: 2gb**`.
 
 ```bash
 docker compose -f ollama/docker-compose.yml up --build -d
@@ -267,7 +275,7 @@ $env:OLLAMA_BASE_URL='http://127.0.0.1:11434'
 npm run agent:local-results
 ```
 
-7. Optional: run tests with preselected QA mode.
+1. Optional: run tests with preselected QA mode.
 
 ```bash
 npm run test:e2e:selector-change
@@ -280,59 +288,71 @@ npm run test:e2e:slow-network
 
 ### Agent and CI (general)
 
-| Variable | Required | Description |
-|---|---:|---|
-| `AGENT_RESULTS_JSON_PATH` | No | Path to Playwright JSON results file (default: `test-results/results.json`) |
-| `AGENT_CONFIDENCE_THRESHOLD` | No | Minimum confidence gate for downstream decisions (default: `0.75`) |
-| `AGENT_MAX_FAILURES_PER_RUN` | No | Maximum failures to process per run (default: `3`) |
-| `AGENT_ENABLE_IN_CI` | No | Enable agent execution in CI (default: `false` for Phase 1 dev mode) |
-| `DEMO_APP_URL` | Yes (CI) | Public URL of the deployed TaskFlow app used by Playwright in GitHub Actions |
-| `BASE_URL` | No | Override target URL for local runs; defaults to `http://localhost:3000` in the Playwright config |
-| `QA_MODE` | No | Optional mode for showcase test runs (`none`, `selector-change`, `logic-bug`, `auth-break`, `slow-network`) |
-| `GITHUB_TOKEN` | Yes (CI, provided) | Provided automatically by GitHub Actions for Issues/PRs |
-| `GITHUB_REPOSITORY` | Yes (CI, provided) | `owner/repo` used for GitHub API calls |
-| `GITHUB_RUN_ID` | Yes (CI, provided) | Used to construct the CI run URL for linking in Issues/PRs |
-| `GITHUB_REF_NAME` | Yes (CI, provided) | Branch name used in issue context |
-| `GITHUB_SHA` | Yes (CI, provided) | Commit SHA used in issue context |
+
+| Variable                       | Required           | Description                                                                                                              |
+| ------------------------------ | ------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| `AGENT_RESULTS_JSON_PATH`      | No                 | Path to Playwright JSON results file (default: `test-results/results.json`)                                              |
+| `AGENT_CONFIDENCE_THRESHOLD`   | No                 | Minimum confidence gate for downstream decisions (default: `0.75`)                                                       |
+| `AGENT_MAX_FAILURES_PER_RUN`   | No                 | Maximum failures to process per run (default: `3`)                                                                       |
+| `AGENT_ENABLE_IN_CI`           | No                 | Enable agent execution in CI (default: `false` for Phase 1 dev mode)                                                     |
+| `DEMO_APP_URL`                 | Yes (CI)           | Public URL of the deployed TaskFlow app used by Playwright in GitHub Actions                                             |
+| `BASE_URL`                     | No                 | Override target URL for local runs; defaults to `http://localhost:3000` in the Playwright config                         |
+| `QA_MODE`                      | No                 | Optional mode for showcase test runs (`none`, `selector-change`, `logic-bug`, `auth-break`, `slow-network`)              |
+| `GITHUB_TOKEN`                 | Yes (CI, provided) | Provided automatically by GitHub Actions for Issues/PRs                                                                  |
+| `GITHUB_REPOSITORY`            | Yes (CI, provided) | `owner/repo` used for GitHub API calls                                                                                   |
+| `GITHUB_RUN_ID`                | Yes (CI, provided) | Used to construct the CI run URL for linking in Issues/PRs                                                               |
+| `GITHUB_REF_NAME`              | Yes (CI, provided) | Branch name used in issue context                                                                                        |
+| `GITHUB_SHA`                   | Yes (CI, provided) | Commit SHA used in issue context                                                                                         |
+
 
 ### LLM routing (all providers)
 
-| Variable | Required | Description |
-|---|---:|---|
-| `AI_PROVIDER` | No | Provider selection: `mock`, `anthropic`, `openai`, `google`, `ollama` (default: `mock`) |
-| `AI_MODEL` | No | Model name passed to the selected provider |
+
+| Variable      | Required | Description                                                                             |
+| ------------- | -------- | --------------------------------------------------------------------------------------- |
+| `AI_PROVIDER` | No       | Provider selection: `mock`, `anthropic`, `openai`, `google`, `ollama` (default: `mock`) |
+| `AI_MODEL`    | No       | Model name passed to the selected provider                                              |
+
 
 ### Anthropic (Claude)
 
-| Variable | Required | Description |
-|---|---:|---|
+
+| Variable            | Required      | Description                           |
+| ------------------- | ------------- | ------------------------------------- |
 | `ANTHROPIC_API_KEY` | Conditionally | Required when `AI_PROVIDER=anthropic` |
+
 
 ### OpenAI
 
-| Variable | Required | Description |
-|---|---:|---|
+
+| Variable         | Required      | Description                        |
+| ---------------- | ------------- | ---------------------------------- |
 | `OPENAI_API_KEY` | Conditionally | Required when `AI_PROVIDER=openai` |
+
 
 ### Google
 
-| Variable | Required | Description |
-|---|---:|---|
+
+| Variable         | Required      | Description                        |
+| ---------------- | ------------- | ---------------------------------- |
 | `GOOGLE_API_KEY` | Conditionally | Required when `AI_PROVIDER=google` |
+
 
 ### Ollama (local)
 
-| Variable | Required | Description |
-|---|---:|---|
-| `OLLAMA_BASE_URL` | Conditionally | Ollama base URL when `AI_PROVIDER=ollama` (default: `http://127.0.0.1:11434`) |
-| `OLLAMA_REQUEST_TIMEOUT_MS` | Optional | Abort Ollama `/api/generate` after this many ms (`0` or unset = no limit). Large prompts on CPU can take many minutes |
-| `AGENT_OLLAMA_MAX_DOM_CHARS` | Optional | Cap DOM snapshot chars for `ollama` (default `8000`; smaller = faster CPU runs) |
-| `AGENT_OLLAMA_MAX_ERROR_CONTEXT_CHARS` | Optional | Cap error-context markdown for `ollama` (default `6000`) |
-| `AGENT_OLLAMA_MAX_TEST_SOURCE_CHARS` | Optional | Cap test file source for `ollama` (default `10000`) |
-| `AGENT_OLLAMA_MAX_CLASSIFY_PREDICT` | Optional | Max decode tokens per classify call for `ollama` (default `384`; lowers latency vs `AGENT_MAX_TOKENS_CLASSIFY`) |
-| `AGENT_OLLAMA_NUM_CTX_MIN` | Optional | Lower bound for Ollama `num_ctx` (default `4096`) |
-| `AGENT_OLLAMA_NUM_CTX_MAX` | Optional | Upper bound for Ollama `num_ctx` (default `16384`; trim prompts before raising) |
-| `OLLAMA_API_KEY` | Optional | Optional key if Ollama endpoint is behind auth/proxy |
+
+| Variable                               | Required      | Description                                                                                                           |
+| -------------------------------------- | ------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `OLLAMA_BASE_URL`                      | Conditionally | Ollama base URL when `AI_PROVIDER=ollama` (default: `http://127.0.0.1:11434`)                                         |
+| `OLLAMA_REQUEST_TIMEOUT_MS`            | Optional      | Abort Ollama `/api/generate` after this many ms (`0` or unset = no limit). Large prompts on CPU can take many minutes |
+| `AGENT_OLLAMA_MAX_DOM_CHARS`           | Optional      | Cap DOM snapshot chars for `ollama` (default `8000`; smaller = faster CPU runs)                                       |
+| `AGENT_OLLAMA_MAX_ERROR_CONTEXT_CHARS` | Optional      | Cap error-context markdown for `ollama` (default `6000`)                                                              |
+| `AGENT_OLLAMA_MAX_TEST_SOURCE_CHARS`   | Optional      | Cap test file source for `ollama` (default `10000`)                                                                   |
+| `AGENT_OLLAMA_MAX_CLASSIFY_PREDICT`    | Optional      | Max decode tokens per classify call for `ollama` (default `384`; lowers latency vs `AGENT_MAX_TOKENS_CLASSIFY`)       |
+| `AGENT_OLLAMA_NUM_CTX_MIN`             | Optional      | Lower bound for Ollama `num_ctx` (default `4096`)                                                                     |
+| `AGENT_OLLAMA_NUM_CTX_MAX`             | Optional      | Upper bound for Ollama `num_ctx` (default `16384`; trim prompts before raising)                                       |
+| `OLLAMA_API_KEY`                       | Optional      | Optional key if Ollama endpoint is behind auth/proxy                                                                  |
+
 
 ## Running a Live Demo
 

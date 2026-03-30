@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { basename } from 'node:path'
 
 import type {
   AgentConfig,
@@ -51,6 +52,19 @@ const isHttpUrl = (value: string): boolean => {
   return value.startsWith('http://') || value.startsWith('https://')
 }
 
+const toRepoRelativeArtifactHint = (value: string): string | null => {
+  const normalized = value.replace(/\\/g, '/')
+  const index = normalized.toLowerCase().indexOf('test-results/')
+  if (index < 0) {
+    return null
+  }
+  return normalized.slice(index)
+}
+
+const looksLikeAbsoluteWindowsPath = (value: string): boolean => {
+  return /^[a-zA-Z]:[\\/]/.test(value)
+}
+
 const buildScreenshotSection = (ctx: FailureContext): string => {
   if (!ctx.screenshotPath || ctx.screenshotPath.trim() === '') {
     return '## Screenshot\nNo screenshot attachment found for this failure.\n'
@@ -65,14 +79,18 @@ Source: ${sanitizedPath}
 `
   }
 
-  const runHint = ctx.runUrl
-    ? `\nCI run artifacts: ${ctx.runUrl}`
+  const runHint = ctx.runUrl ? `\nCI run artifacts: ${ctx.runUrl}` : ''
+
+  const relativeHint = toRepoRelativeArtifactHint(sanitizedPath)
+  const label = relativeHint ?? basename(sanitizedPath)
+  const redactionHint = looksLikeAbsoluteWindowsPath(sanitizedPath)
+    ? ' (local absolute path omitted)'
     : ''
+
   return `## Screenshot
-Screenshot artifact path:
-\`\`\`
-${sanitizedPath}
-\`\`\`${runHint}
+Screenshot captured${redactionHint}. GitHub Issues cannot accept binary uploads via API.
+
+Artifact reference: \`${label}\`${runHint}
 `
 }
 
