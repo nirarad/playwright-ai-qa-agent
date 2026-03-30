@@ -7,12 +7,17 @@ interface PlaywrightAttachment {
   path?: string
 }
 
+interface PlaywrightSecondaryError {
+  message?: string
+}
+
 interface PlaywrightResult {
   status?: string
   error?: {
     message?: string
     stack?: string
   }
+  errors?: PlaywrightSecondaryError[]
   attachments?: PlaywrightAttachment[]
 }
 
@@ -100,6 +105,21 @@ const readTextAttachment = (path: string | undefined, maxChars: number): string 
   return `${raw.slice(0, maxChars)}\n\n...[truncated]`
 }
 
+const joinPlaywrightErrorMessages = (
+  errors: PlaywrightSecondaryError[] | undefined,
+): string | undefined => {
+  if (!errors?.length) {
+    return undefined
+  }
+  const parts = errors
+    .map((entry) => entry.message?.trim())
+    .filter((message): message is string => Boolean(message && message.length))
+  if (!parts.length) {
+    return undefined
+  }
+  return parts.join('\n\n')
+}
+
 const collectFailuresFromSuite = (suite: PlaywrightSuite, failures: FailureContext[]): void => {
   for (const child of suite.suites ?? []) {
     collectFailuresFromSuite(child, failures)
@@ -124,6 +144,7 @@ const collectFailuresFromSuite = (suite: PlaywrightSuite, failures: FailureConte
           testSource,
           error: result.error?.message ?? '',
           errorStack: result.error?.stack ?? '',
+          playwrightErrorMessages: joinPlaywrightErrorMessages(result.errors),
           screenshotPath: getScreenshotPath(result.attachments),
           errorContextPath: getAttachmentPath(result.attachments, 'error-context'),
           errorContext: readTextAttachment(

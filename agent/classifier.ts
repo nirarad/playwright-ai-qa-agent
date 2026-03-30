@@ -99,7 +99,7 @@ const normalizeJsonCandidate = (raw: string): string => {
 }
 
 const hasExplicitLocatorResolutionSignal = (ctx: FailureContext): boolean => {
-  const signalText = `${ctx.error}\n${ctx.errorStack}\n${ctx.errorContext ?? ''}`.toLowerCase()
+  const signalText = `${ctx.error}\n${ctx.errorStack}\n${ctx.playwrightErrorMessages ?? ''}\n${ctx.errorContext ?? ''}`.toLowerCase()
   const signatures = [
     'waiting for getbytestid(',
     'waiting for locator(',
@@ -132,6 +132,10 @@ const narrowContextForOllama = (
 ): FailureContext => ({
   ...ctx,
   errorContext: truncateHeadForOllama(ctx.errorContext, limits.maxErrorContextChars),
+  playwrightErrorMessages: truncateHeadForOllama(
+    ctx.playwrightErrorMessages,
+    limits.maxErrorContextChars,
+  ),
   domSnapshot: truncateHeadForOllama(ctx.domSnapshot, limits.maxDomChars),
   testSource: truncateHeadForOllama(ctx.testSource, limits.maxTestSourceChars) ?? ctx.testSource,
 })
@@ -201,6 +205,8 @@ Test file: ${ctxForLlm.testFile}
 Error: ${ctxForLlm.error}
 Stack:
 ${ctxForLlm.errorStack}
+Additional Playwright error messages (from JSON errors[], if any):
+${ctxForLlm.playwrightErrorMessages ?? '(none)'}
 Error context markdown (if available):
 ${ctxForLlm.errorContext ?? '(none)'}
 DOM snapshot HTML at failure time (if available):
@@ -217,6 +223,7 @@ ${ctxForLlm.testSource}`
     temperature: config.llm.temperature.classify,
     promptChars: prompt.length,
     hasStack: Boolean(ctxForLlm.errorStack),
+    hasPlaywrightErrorMessages: Boolean(ctxForLlm.playwrightErrorMessages),
     hasErrorContext: Boolean(ctxForLlm.errorContext),
     hasDomSnapshot: Boolean(ctxForLlm.domSnapshot),
   })

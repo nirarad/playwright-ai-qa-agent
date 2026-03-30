@@ -10,6 +10,8 @@ export interface FailureContext {
   testSource: string
   error: string
   errorStack: string
+  /** Joined `result.errors[].message` from Playwright JSON (call logs, etc.). */
+  playwrightErrorMessages?: string
   screenshotPath?: string
   errorContextPath?: string
   errorContext?: string
