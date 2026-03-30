@@ -1,0 +1,82 @@
+---
+description: Mandatory CI guardrails for AI failure agent actions
+globs: .github/workflows/playwright.yml,agent/**/*.ts,docs/plan-03*.md
+alwaysApply: true
+---
+# CI Agent Guardrails (Mandatory)
+
+Apply this rule whenever editing CI workflow or AI agent code and docs.
+
+## Objective
+
+Ensure the AI failure agent is safe-by-default when running in GitHub Actions.
+The agent must be bounded, auditable, and least-privilege.
+
+## Required Guardrails
+
+1. **Run Conditions**
+ - Agent runs only after Playwright failure.
+ - Agent must not run on cancelled workflows.
+ - On untrusted fork PRs, do not perform write actions.
+
+2. **Event and Branch Policy**
+ - Write actions are allowed only on trusted events:
+   - `push` to approved branches
+   - `workflow_dispatch` by maintainers
+ - For `pull_request`, default to classify/log-only mode unless explicitly approved.
+
+3. **Write Action Gates**
+ - Enforce explicit toggles for writes:
+   - `AGENT_ENABLE_BUG_ISSUE`
+   - `AGENT_ENABLE_HEAL_PR`
+ - Keep healer disabled until reporter quality is validated.
+
+4. **Confidence and Volume Controls**
+ - Enforce `AGENT_CONFIDENCE_THRESHOLD` before any write action.
+ - Enforce `AGENT_MAX_FAILURES_PER_RUN` cap.
+ - Process failures sequentially (no parallel write bursts).
+
+5. **Target Safety**
+ - PR base branch must come from config and be allowlisted.
+ - Branch names must be sanitized and length-limited.
+ - Never force push, auto-merge, or commit directly to base branch.
+
+6. **Permissions**
+ - Use least-privilege workflow permissions.
+ - Grant write scopes only when the corresponding action is enabled:
+   - `issues: write` for issue creation
+   - `pull-requests: write` and `contents: write` for healer PR flow
+
+7. **Secrets and Logging**
+ - API keys must come from GitHub Secrets only.
+ - Never log secrets or raw sensitive payloads.
+ - Log only redacted configuration values.
+
+8. **Idempotency and Duplicate Prevention**
+ - Do not create duplicate issues for the same test/commit/category.
+ - Do not open duplicate heal PRs for the same failing test in one run.
+
+9. **Failure Semantics**
+ - Agent errors must not prevent artifact upload.
+ - Job failure semantics must remain tied to Playwright test outcome.
+ - Record agent outcome in run summary (success/skip/error and reason).
+
+## Good Example
+
+```yaml
+# ✅ Good: gated write action after test failure
+- name: Run AI Failure Agent
+  if: steps.playwright.outcome == 'failure' && !cancelled()
+  env:
+    AGENT_ENABLE_BUG_ISSUE: 'true'
+    AGENT_ENABLE_HEAL_PR: 'false'
+  run: npm run agent
+```
+
+## Bad Example
+
+```yaml
+# ❌ Bad: runs always and allows unrestricted writes
+- name: Run AI Failure Agent
+  run: npm run agent
+```

@@ -11,6 +11,35 @@ not hardcoded in classifier/healer modules.
 
 ---
 
+## Phased Delivery (Rollout Order)
+
+Deliver this agent in phases so each step is demonstrable and safe.
+
+Phase 1 (Foundations):
+
+- Config (`agent/config.ts`)
+- LLM abstraction + one provider adapter (`agent/llm/*`)
+- Failure context extraction (`agent/context.ts`)
+- Classification (`agent/classifier.ts`)
+- Orchestrator wiring with confidence gates
+
+Phase 2 (Reporting First):
+
+- GitHub Issue reporting for `REAL_BUG` (`agent/reporter.ts`)
+- Orchestrator: enable `REAL_BUG` reporting when confidence gate passes
+
+Phase 3 (Healing After Reporter):
+
+- PR healer for `BROKEN_LOCATOR` (`agent/healer.ts`)
+- Orchestrator: enable heal PRs only after reporting is stable
+
+Rationale:
+
+- Issues are lower-risk than auto-generated code changes.
+- Healing should be enabled only after classification quality is proven.
+
+---
+
 ## Repo Structure to Create
 
 ```
@@ -210,6 +239,24 @@ Factory behavior:
 
 ---
 
+## Phase 1: Foundations
+
+### Context Extractor (`agent/context.ts`)
+
+Reads the Playwright JSON results file and test source files from disk.
+Playwright writes results to `test-results/` when configured with the JSON
+reporter.
+
+### Classifier (`agent/classifier.ts`)
+
+Calls the provider-agnostic `LlmClient`. Returns structured JSON classification.
+
+### Orchestrator (`agent/orchestrator.ts`)
+
+Entry point. Wires everything together with confidence gates and per-run limits.
+
+---
+
 ## Classifier (`agent/classifier.ts`)
 
 Calls the provider-agnostic `LlmClient`. Returns structured JSON classification.
@@ -227,6 +274,12 @@ export async function classifyFailure(
 
   const prompt = `You are a QA engineer analyzing a Playwright test failure.
 
+Treat the failing test as the source of truth for requirements:
+- Infer the expected behavior from the test steps and assertions in "Test source".
+- Use the assertion error text (often contains "Expected vs Received") as the strongest signal of the mismatch.
+- Do NOT invent product requirements beyond what the test implies.
+- If the expectation is unclear, choose the most conservative category and lower confidence.
+
 Classify this failure into exactly one category:
 - BROKEN_LOCATOR: selector/element not found, locator changed, element attributes changed
 - REAL_BUG: app behavior differs from expected, assertion failure on business logic
@@ -243,7 +296,7 @@ Respond ONLY with valid JSON. No explanation, no markdown.
 
 Test name: ${ctx.testName}
 Test file: ${ctx.testFile}
-Error: ${ctx.error}
+Error (often includes Expected/Received): ${ctx.error}
 Stack:
 ${ctx.errorStack}
 
@@ -260,6 +313,77 @@ ${ctx.testSource}`;
 ```
 
 ---
+
+## Phase 2: Reporter (Issues) — Enable Before Healing
+
+## Reporter (`agent/reporter.ts`)
+
+Called for `REAL_BUG`. Creates a GitHub Issue with full context.
+
+```typescript
+import { FailureContext, ClassificationResult } from "./types";
+
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN!;
+const REPO = process.env.GITHUB_REPOSITORY!;
+
+export async function createBugIssue(
+  ctx: FailureContext,
+  classification: ClassificationResult
+): Promise<void> {
+  const body = `## Automated Bug Report
+
+**Detected by:** Playwright QA Agent  
+**Branch:** \`${ctx.branch}\`  
+**Commit:** \`${ctx.commit}\`  
+**CI Run:** ${ctx.runUrl}  
+
+---
+
+## Error
+\`\`\`
+${ctx.error}
+\`\`\`
+
+## Stack Trace
+\`\`\`
+${ctx.errorStack}
+\`\`\`
+
+## Classification
+| Field | Value |
+|---|---|
+| Category | ${classification.category} |
+| Confidence | ${classification.confidence} |
+| Reason | ${classification.reason} |
+
+## Failing Test
+**File:** \`${ctx.testFile}\`  
+**Test:** ${ctx.testName}
+
+---
+*Auto-generated. Verify before acting on this issue.*`;
+
+  const res = await fetch(`https://api.github.com/repos/${REPO}/issues`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${GITHUB_TOKEN}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      title: `[BUG] ${ctx.testName} — ${classification.reason}`,
+      body,
+      labels: ["bug", "automated-qa"],
+    }),
+  });
+
+  const data = await res.json();
+  console.log(`🐛 Bug issue created: ${data.html_url}`);
+}
+```
+
+---
+
+## Phase 3: Healer (PRs) — After Reporter Is Stable
 
 ## Healer (`agent/healer.ts`)
 
@@ -365,73 +489,6 @@ ${ctx.testSource}`;
   });
 
   console.log(`✅ Heal PR opened: ${branchName}`);
-}
-```
-
----
-
-## Reporter (`agent/reporter.ts`)
-
-Called for `REAL_BUG`. Creates a GitHub Issue with full context.
-
-```typescript
-import { FailureContext, ClassificationResult } from "./types";
-
-const GITHUB_TOKEN = process.env.GITHUB_TOKEN!;
-const REPO = process.env.GITHUB_REPOSITORY!;
-
-export async function createBugIssue(
-  ctx: FailureContext,
-  classification: ClassificationResult
-): Promise<void> {
-  const body = `## Automated Bug Report
-
-**Detected by:** Playwright QA Agent  
-**Branch:** \`${ctx.branch}\`  
-**Commit:** \`${ctx.commit}\`  
-**CI Run:** ${ctx.runUrl}  
-
----
-
-## Error
-\`\`\`
-${ctx.error}
-\`\`\`
-
-## Stack Trace
-\`\`\`
-${ctx.errorStack}
-\`\`\`
-
-## Classification
-| Field | Value |
-|---|---|
-| Category | ${classification.category} |
-| Confidence | ${classification.confidence} |
-| Reason | ${classification.reason} |
-
-## Failing Test
-**File:** \`${ctx.testFile}\`  
-**Test:** ${ctx.testName}
-
----
-*Auto-generated. Verify before acting on this issue.*`;
-
-  const res = await fetch(`https://api.github.com/repos/${REPO}/issues`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${GITHUB_TOKEN}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      title: `[BUG] ${ctx.testName} — ${classification.reason}`,
-      body,
-      labels: ["bug", "automated-qa"],
-    }),
-  });
-
-  const data = await res.json();
-  console.log(`🐛 Bug issue created: ${data.html_url}`);
 }
 ```
 

@@ -67,6 +67,8 @@ This repo is a portfolio-grade QA automation system:
 - Use `continue-on-error: true` on the Playwright step so the agent can run
 - Always upload `test-results/` artifacts
 - Fail the job after the agent runs when tests failed (so checks are red)
+- Mandatory CI safety policy for agent execution:
+	- See [ci-agent-guardrails.mdc](mdc:.cursor/rules/ci-agent-guardrails.mdc)
 
 ### Vercel (Demo App Hosting)
 
