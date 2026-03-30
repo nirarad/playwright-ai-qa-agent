@@ -26,6 +26,13 @@ const main = async (): Promise<void> => {
     enableInCi: config.runtime.enableInCi,
     resultsJsonPath: config.paths.resultsJson,
     ci: process.env.CI === 'true',
+    ...(config.llm.provider === 'ollama'
+      ? {
+          ollamaMaxDomChars: config.ollama.maxDomChars,
+          ollamaMaxClassifyPredict: config.ollama.maxClassifyPredict,
+          ollamaNumCtxMax: config.ollama.numCtxMax,
+        }
+      : {}),
   })
 
   if (process.env.CI === 'true' && !config.runtime.enableInCi) {

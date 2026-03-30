@@ -27,10 +27,19 @@ export interface ClassificationResult {
   suggestedFix: string | null
 }
 
+export interface OllamaPerformanceConfig {
+  maxDomChars: number
+  maxErrorContextChars: number
+  maxTestSourceChars: number
+  maxClassifyPredict: number
+  numCtxMin: number
+  numCtxMax: number
+}
+
 export interface AgentConfig {
   llm: {
     // Supported providers.
-    provider: 'anthropic' | 'openai' | 'google' | 'mock'
+    provider: 'anthropic' | 'openai' | 'google' | 'ollama' | 'mock'
     model: string
     apiKeyEnvVar: string
     maxTokens: {
@@ -58,4 +67,6 @@ export interface AgentConfig {
   paths: {
     resultsJson: string
   }
+  /** Used when `llm.provider` is `ollama` (prompt trim + generate options). */
+  ollama: OllamaPerformanceConfig
 }

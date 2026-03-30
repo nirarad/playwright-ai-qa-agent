@@ -1,7 +1,12 @@
 import { getAgentConfig } from './config.js'
 import { logger } from './logger.js'
 import { getLlmClient } from './llm/factory.js'
-import type { ClassificationResult, FailureCategory, FailureContext } from './types.js'
+import type {
+  ClassificationResult,
+  FailureCategory,
+  FailureContext,
+  OllamaPerformanceConfig,
+} from './types.js'
 
 const isFailureCategory = (value: unknown): value is FailureCategory => {
   return (
@@ -110,6 +115,27 @@ const hasExplicitLocatorResolutionSignal = (ctx: FailureContext): boolean => {
   return signatures.some((signature) => signalText.includes(signature))
 }
 
+const truncateHeadForOllama = (value: string | undefined, maxChars: number): string | undefined => {
+  if (value === undefined) {
+    return undefined
+  }
+  if (value.length <= maxChars) {
+    return value
+  }
+  const omitted = value.length - maxChars
+  return `${value.slice(0, maxChars)}\n\n...[truncated ${omitted} chars for ollama performance]`
+}
+
+const narrowContextForOllama = (
+  ctx: FailureContext,
+  limits: OllamaPerformanceConfig,
+): FailureContext => ({
+  ...ctx,
+  errorContext: truncateHeadForOllama(ctx.errorContext, limits.maxErrorContextChars),
+  domSnapshot: truncateHeadForOllama(ctx.domSnapshot, limits.maxDomChars),
+  testSource: truncateHeadForOllama(ctx.testSource, limits.maxTestSourceChars) ?? ctx.testSource,
+})
+
 const buildRepairPrompt = (rawResponse: string): string => {
   return `Convert the following model output into valid JSON.
 
@@ -144,6 +170,11 @@ export const classifyFailure = async (ctx: FailureContext): Promise<Classificati
     }
   }
 
+  const ctxForLlm =
+    config.llm.provider === 'ollama'
+      ? narrowContextForOllama(ctx, config.ollama)
+      : ctx
+
   const prompt = `You are a QA engineer analyzing a Playwright test failure.
 
 Treat the failing test as the source of truth for requirements:
@@ -165,18 +196,18 @@ Respond with valid JSON only:
   "suggestedFix": "string or null"
 }
 
-Test name: ${ctx.testName}
-Test file: ${ctx.testFile}
-Error: ${ctx.error}
+Test name: ${ctxForLlm.testName}
+Test file: ${ctxForLlm.testFile}
+Error: ${ctxForLlm.error}
 Stack:
-${ctx.errorStack}
+${ctxForLlm.errorStack}
 Error context markdown (if available):
-${ctx.errorContext ?? '(none)'}
+${ctxForLlm.errorContext ?? '(none)'}
 DOM snapshot HTML at failure time (if available):
-${ctx.domSnapshot ?? '(none)'}
+${ctxForLlm.domSnapshot ?? '(none)'}
 
 Test source:
-${ctx.testSource}`
+${ctxForLlm.testSource}`
 
   logger.debug('Submitting classification request', {
     provider: config.llm.provider,
@@ -185,9 +216,9 @@ ${ctx.testSource}`
     maxTokens: config.llm.maxTokens.classify,
     temperature: config.llm.temperature.classify,
     promptChars: prompt.length,
-    hasStack: Boolean(ctx.errorStack),
-    hasErrorContext: Boolean(ctx.errorContext),
-    hasDomSnapshot: Boolean(ctx.domSnapshot),
+    hasStack: Boolean(ctxForLlm.errorStack),
+    hasErrorContext: Boolean(ctxForLlm.errorContext),
+    hasDomSnapshot: Boolean(ctxForLlm.domSnapshot),
   })
 
   const raw = await llm.classifyFailure({

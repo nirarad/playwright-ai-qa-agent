@@ -1,0 +1,40 @@
+# Run from Docker Desktop: open this folder, right-click docker-compose.yml → Compose Up
+# Or: docker compose -f ollama/docker-compose.yml up --build
+#
+# GPU: requires NVIDIA drivers on the host and Docker with GPU support (Linux:
+# nvidia-container-toolkit; Windows: Docker Desktop + WSL2 with GPU enabled).
+# Without a GPU, delete the deploy.resources.reservations.devices entry below (keep limits.cpus) or use README CPU-only notes.
+
+services:
+  ollama:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: qa-agent-ollama
+    ports:
+      - '11434:11434'
+    environment:
+      # Model pulled on first start (override in Docker Desktop env UI if needed)
+      OLLAMA_PULL_MODEL: ${OLLAMA_PULL_MODEL:-qwen2.5:7b}
+      # Keep model loaded between agent requests (reduces cold-load latency)
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-30m}
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
+    volumes:
+      # Persist downloaded models between restarts
+      - ollama-data:/root/.ollama
+    # Default 8 CPUs suits 8C/16T hosts (e.g. i9-9900K); lower OLLAMA_DOCKER_CPUS on laptops.
+    # NVIDIA GPU: reservations request one or more GPUs for CUDA inference (see README if compose fails).
+    deploy:
+      resources:
+        limits:
+          cpus: '${OLLAMA_DOCKER_CPUS:-8}'
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    # Helps avoid shared-memory edge cases with larger context / some drivers
+    shm_size: '2gb'
+
+volumes:
+  ollama-data:

@@ -1,0 +1,14 @@
+# Optional: use when you have no NVIDIA GPU or `docker compose up` fails on device reservations.
+# Example:
+#   docker compose -f ollama/docker-compose.yml -f ollama/docker-compose.cpu-only.yml up --build
+#
+# This file overrides GPU reservations while keeping the same CPU limit default.
+
+services:
+  ollama:
+    deploy:
+      resources:
+        limits:
+          cpus: '${OLLAMA_DOCKER_CPUS:-8}'
+        reservations:
+          devices: []

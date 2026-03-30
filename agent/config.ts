@@ -1,4 +1,4 @@
-import type { AgentConfig } from './types.js'
+import type { AgentConfig, OllamaPerformanceConfig } from './types.js'
 
 const parseNumber = (value: string | undefined, fallback: number): number => {
   if (!value) {
@@ -50,6 +50,9 @@ const getApiKeyEnvVar = (provider: AgentConfig['llm']['provider']): string => {
   if (provider === 'google') {
     return 'GOOGLE_API_KEY'
   }
+  if (provider === 'ollama') {
+    return 'OLLAMA_API_KEY'
+  }
   return 'MOCK_API_KEY'
 }
 
@@ -59,7 +62,8 @@ export const getAgentConfig = (): AgentConfig => {
     providerRaw !== 'mock' &&
     providerRaw !== 'anthropic' &&
     providerRaw !== 'openai' &&
-    providerRaw !== 'google'
+    providerRaw !== 'google' &&
+    providerRaw !== 'ollama'
   ) {
     throw new Error(`Unsupported AI_PROVIDER: ${providerRaw}`)
   }
@@ -69,10 +73,45 @@ export const getAgentConfig = (): AgentConfig => {
     throw new Error('AGENT_CONFIDENCE_THRESHOLD must be between 0 and 1')
   }
 
+  const defaultModel =
+    providerRaw === 'ollama' ? 'qwen2.5:7b' : 'mock-classifier-v1'
+
+  const ollamaNumCtxMin = parsePositiveInteger(
+    process.env.AGENT_OLLAMA_NUM_CTX_MIN,
+    4096,
+  )
+  const ollamaNumCtxMax = parsePositiveInteger(
+    process.env.AGENT_OLLAMA_NUM_CTX_MAX,
+    16384,
+  )
+  if (ollamaNumCtxMin > ollamaNumCtxMax) {
+    throw new Error(
+      'AGENT_OLLAMA_NUM_CTX_MIN must be less than or equal to AGENT_OLLAMA_NUM_CTX_MAX',
+    )
+  }
+
+  const ollama: OllamaPerformanceConfig = {
+    maxDomChars: parsePositiveInteger(process.env.AGENT_OLLAMA_MAX_DOM_CHARS, 8000),
+    maxErrorContextChars: parsePositiveInteger(
+      process.env.AGENT_OLLAMA_MAX_ERROR_CONTEXT_CHARS,
+      6000,
+    ),
+    maxTestSourceChars: parsePositiveInteger(
+      process.env.AGENT_OLLAMA_MAX_TEST_SOURCE_CHARS,
+      10000,
+    ),
+    maxClassifyPredict: parsePositiveInteger(
+      process.env.AGENT_OLLAMA_MAX_CLASSIFY_PREDICT,
+      384,
+    ),
+    numCtxMin: ollamaNumCtxMin,
+    numCtxMax: ollamaNumCtxMax,
+  }
+
   return {
     llm: {
       provider: providerRaw,
-      model: process.env.AI_MODEL ?? 'mock-classifier-v1',
+      model: process.env.AI_MODEL ?? defaultModel,
       apiKeyEnvVar: getApiKeyEnvVar(providerRaw),
       maxTokens: {
         classify: parseNumber(process.env.AGENT_MAX_TOKENS_CLASSIFY, 600),
@@ -100,5 +139,6 @@ export const getAgentConfig = (): AgentConfig => {
     paths: {
       resultsJson: process.env.AGENT_RESULTS_JSON_PATH ?? 'test-results/results.json',
     },
+    ollama,
   }
 }

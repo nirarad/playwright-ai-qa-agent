@@ -2,6 +2,7 @@ import type { AgentConfig } from '../types.js'
 import { AnthropicClient } from './anthropic-client.js'
 import { GoogleClient } from './google-client.js'
 import { MockClient } from './mock-client.js'
+import { OllamaClient } from './ollama-client.js'
 import { OpenAiClient } from './openai-client.js'
 import type { LlmClient } from './types.js'
 
@@ -32,6 +33,10 @@ export const getLlmClient = (config: AgentConfig): LlmClient => {
       throw new Error(`Missing API key for provider google: ${config.llm.apiKeyEnvVar}`)
     }
     return new GoogleClient(key, config.llm.model)
+  }
+
+  if (config.llm.provider === 'ollama') {
+    return new OllamaClient(config.llm.model)
   }
 
   throw new Error(`Unsupported provider: ${String(config.llm.provider)}`)
