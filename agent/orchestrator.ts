@@ -1,9 +1,11 @@
 import { classifyFailure } from './classifier.js'
 import { getAgentConfig } from './config.js'
 import { extractFailures } from './context.js'
+import { loadEnvForAgent } from './env.js'
 import { logger } from './logger.js'
 
 const main = async (): Promise<void> => {
+  loadEnvForAgent()
   const config = getAgentConfig()
   logger.info('Agent starting', {
     provider: config.llm.provider,
