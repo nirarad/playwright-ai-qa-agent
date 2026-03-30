@@ -6,7 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test:e2e": "playwright test -c ../tests/playwright.config.ts",
+    "test:e2e:headed": "playwright test -c ../tests/playwright.config.ts --headed",
+    "test:e2e:debug": "playwright test -c ../tests/playwright.config.ts --debug",
+    "test:e2e:report": "playwright show-report ../test-results/html-report"
   },
   "dependencies": {
     "next": "^16.2.1",
@@ -14,6 +18,7 @@
     "react-dom": "^18.2.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.55.0",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",

@@ -186,7 +186,7 @@ npm run dev
 5. Run Playwright tests.
 
 ```bash
-npx playwright test
+npm run test:e2e:none
 ```
 
 6. Trigger the agent manually (after a failing test run has produced `test-results/results.json`).
@@ -198,7 +198,10 @@ npm run agent
 7. Optional: run tests with preselected QA mode.
 
 ```bash
-BREAK_MODE=selector-change npx playwright test
+npm run test:e2e:selector-change
+npm run test:e2e:logic-bug
+npm run test:e2e:auth-break
+npm run test:e2e:slow-network
 ```
 
 ## Environment Variables
@@ -208,7 +211,7 @@ BREAK_MODE=selector-change npx playwright test
 | `ANTHROPIC_API_KEY` | Yes | API key for the Claude classification and healing calls |
 | `DEMO_APP_URL` | Yes (CI) | Public URL of the deployed TaskFlow app used by Playwright in GitHub Actions |
 | `BASE_URL` | No | Override target URL for local runs; defaults to `http://localhost:3000` in the Playwright config |
-| `BREAK_MODE` | No | Optional mode for CI-triggered break scenarios (wired via Playwright global setup) |
+| `QA_MODE` | No | Optional mode for showcase test runs (`none`, `selector-change`, `logic-bug`, `auth-break`, `slow-network`) |
 | `GITHUB_TOKEN` | Yes (CI, provided) | Provided automatically by GitHub Actions for Issues/PRs |
 | `GITHUB_REPOSITORY` | Yes (CI, provided) | `owner/repo` used for GitHub API calls |
 | `GITHUB_RUN_ID` | Yes (CI, provided) | Used to construct the CI run URL for linking in Issues/PRs |
@@ -218,7 +221,7 @@ BREAK_MODE=selector-change npx playwright test
 ## Running a Live Demo
 
 1. Open the GitHub Actions tab for the repository and select the Playwright workflow.
-2. Click “Run workflow” and choose a `break_mode` value (for example `selector-change` to force a locator failure).
+2. Click “Run workflow” and choose a `qa_mode` value (for example `selector-change` to force a locator failure).
 3. Watch the Playwright step fail while still uploading the HTML report and JSON results artifact.
 4. Confirm the agent step runs after the failure and posts its classification in logs.
 5. For `BROKEN_LOCATOR`, expect a PR opened against the repo with an updated test file; for `REAL_BUG`, expect a GitHub Issue created with the error and CI run link.
