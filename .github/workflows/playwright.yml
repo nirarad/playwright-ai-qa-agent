@@ -1,0 +1,75 @@
+name: Playwright + AI QA Agent
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      qa_mode:
+        description: 'QA mode to inject for this run'
+        required: false
+        default: 'none'
+        type: choice
+        options:
+          - none
+          - selector-change
+          - logic-bug
+          - auth-break
+          - slow-network
+
+jobs:
+  test-and-analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium --with-deps
+
+      - name: Run Playwright showcase suite
+        id: playwright
+        env:
+          BASE_URL: https://playwright-ai-qa-agent.vercel.app/
+          QA_MODE: ${{ github.event.inputs.qa_mode || 'none' }}
+          CI: true
+        run: npx playwright test -c tests/playwright.config.ts
+        continue-on-error: true
+
+      - name: Upload test artifacts
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results
+          path: test-results/
+          retention-days: 7
+
+      # Agent integration is intentionally disabled until the
+      # failure-classification workflow is ready.
+      # - name: Run AI Failure Agent
+      #   if: steps.playwright.outcome == 'failure'
+      #   env:
+      #     ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #     GITHUB_SERVER_URL: ${{ github.server_url }}
+      #     GITHUB_REPOSITORY: ${{ github.repository }}
+      #     GITHUB_RUN_ID: ${{ github.run_id }}
+      #     GITHUB_REF_NAME: ${{ github.ref_name }}
+      #     GITHUB_SHA: ${{ github.sha }}
+      #   run: npm run agent
+
+      - name: Mark job failed if tests failed
+        if: steps.playwright.outcome == 'failure'
+        run: exit 1
