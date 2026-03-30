@@ -11,6 +11,10 @@ export interface FailureContext {
   error: string
   errorStack: string
   screenshotPath?: string
+  errorContextPath?: string
+  errorContext?: string
+  domSnapshotPath?: string
+  domSnapshot?: string
   runUrl: string
   branch: string
   commit: string

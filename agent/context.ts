@@ -79,6 +79,27 @@ const getScreenshotPath = (attachments: PlaywrightAttachment[] | undefined): str
   return screenshot?.path
 }
 
+const getAttachmentPath = (
+  attachments: PlaywrightAttachment[] | undefined,
+  attachmentName: string,
+): string | undefined => {
+  if (!attachments) {
+    return undefined
+  }
+  return attachments.find((item) => item.name === attachmentName && item.path)?.path
+}
+
+const readTextAttachment = (path: string | undefined, maxChars: number): string | undefined => {
+  if (!path || !existsSync(path)) {
+    return undefined
+  }
+  const raw = readFileSync(path, 'utf-8')
+  if (raw.length <= maxChars) {
+    return raw
+  }
+  return `${raw.slice(0, maxChars)}\n\n...[truncated]`
+}
+
 const collectFailuresFromSuite = (suite: PlaywrightSuite, failures: FailureContext[]): void => {
   for (const child of suite.suites ?? []) {
     collectFailuresFromSuite(child, failures)
@@ -104,6 +125,16 @@ const collectFailuresFromSuite = (suite: PlaywrightSuite, failures: FailureConte
           error: result.error?.message ?? '',
           errorStack: result.error?.stack ?? '',
           screenshotPath: getScreenshotPath(result.attachments),
+          errorContextPath: getAttachmentPath(result.attachments, 'error-context'),
+          errorContext: readTextAttachment(
+            getAttachmentPath(result.attachments, 'error-context'),
+            20000,
+          ),
+          domSnapshotPath: getAttachmentPath(result.attachments, 'dom-snapshot'),
+          domSnapshot: readTextAttachment(
+            getAttachmentPath(result.attachments, 'dom-snapshot'),
+            30000,
+          ),
           runUrl: buildRunUrl(),
           branch: process.env.GITHUB_REF_NAME ?? '',
           commit: process.env.GITHUB_SHA ?? '',

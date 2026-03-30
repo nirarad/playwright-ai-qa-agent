@@ -1,4 +1,6 @@
 import { test as base, type Page } from '@playwright/test'
+import { mkdir, writeFile } from 'node:fs/promises'
+import { dirname } from 'node:path'
 
 const BASE_URL = process.env.BASE_URL ?? 'http://localhost:3000'
 const QA_MODE = process.env.QA_MODE ?? 'none'
@@ -29,6 +31,25 @@ export const test = base.extend<Fixtures>({
     await page.goto(`${BASE_URL}/dashboard`)
     await use(page)
   },
+})
+
+test.afterEach(async ({ page }, testInfo) => {
+  if (testInfo.status === testInfo.expectedStatus) {
+    return
+  }
+
+  try {
+    const html = await page.content()
+    const domPath = testInfo.outputPath('dom.html')
+    await mkdir(dirname(domPath), { recursive: true })
+    await writeFile(domPath, html, 'utf-8')
+    await testInfo.attach('dom-snapshot', {
+      path: domPath,
+      contentType: 'text/html',
+    })
+  } catch {
+    // Ignore capture errors so failure signal stays focused on the root test error.
+  }
 })
 
 const seedBaseState = async (page: Page): Promise<void> => {

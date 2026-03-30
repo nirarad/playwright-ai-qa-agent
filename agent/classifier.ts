@@ -93,6 +93,23 @@ const normalizeJsonCandidate = (raw: string): string => {
   return extractFirstJsonObject(withoutFences).trim()
 }
 
+const hasExplicitLocatorResolutionSignal = (ctx: FailureContext): boolean => {
+  const signalText = `${ctx.error}\n${ctx.errorStack}\n${ctx.errorContext ?? ''}`.toLowerCase()
+  const signatures = [
+    'waiting for getbytestid(',
+    'waiting for locator(',
+    'strict mode violation',
+    'locator.fill:',
+    'locator.click:',
+    'locator.check:',
+    'locator is not visible',
+    'element is not attached',
+    'resolved to 0 elements',
+    'did not match any elements',
+  ]
+  return signatures.some((signature) => signalText.includes(signature))
+}
+
 const buildRepairPrompt = (rawResponse: string): string => {
   return `Convert the following model output into valid JSON.
 
@@ -112,6 +129,20 @@ ${rawResponse}`
 export const classifyFailure = async (ctx: FailureContext): Promise<ClassificationResult> => {
   const config = getAgentConfig()
   const llm = getLlmClient(config)
+
+  if (hasExplicitLocatorResolutionSignal(ctx)) {
+    logger.info('Applying deterministic locator-bias rule before LLM call', {
+      testName: ctx.testName,
+      reason: 'Explicit locator-resolution error signatures detected.',
+    })
+    return {
+      category: 'BROKEN_LOCATOR',
+      confidence: 0.93,
+      reason: 'Explicit locator-resolution failure signature detected in error context.',
+      suggestedFix:
+        'Update stale locator targets (data-testid or selector strategy) to match current DOM.',
+    }
+  }
 
   const prompt = `You are a QA engineer analyzing a Playwright test failure.
 
@@ -139,6 +170,10 @@ Test file: ${ctx.testFile}
 Error: ${ctx.error}
 Stack:
 ${ctx.errorStack}
+Error context markdown (if available):
+${ctx.errorContext ?? '(none)'}
+DOM snapshot HTML at failure time (if available):
+${ctx.domSnapshot ?? '(none)'}
 
 Test source:
 ${ctx.testSource}`
@@ -151,6 +186,8 @@ ${ctx.testSource}`
     temperature: config.llm.temperature.classify,
     promptChars: prompt.length,
     hasStack: Boolean(ctx.errorStack),
+    hasErrorContext: Boolean(ctx.errorContext),
+    hasDomSnapshot: Boolean(ctx.domSnapshot),
   })
 
   const raw = await llm.classifyFailure({
