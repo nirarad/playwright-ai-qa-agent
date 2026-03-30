@@ -85,7 +85,7 @@ TaskFlow is a deliberately small task manager with auth and a few core flows tha
 
 | Break Mode | What it simulates | Expected agent response |
 |---|---|---|
-| `selector-change` | UI attribute changes (`data-testid` renamed) that break locators | `BROKEN_LOCATOR` → PR |
+| `selector-change` | Internal app `data-testid` changes (tasks/profile) that break locators while login remains stable | `BROKEN_LOCATOR` → PR |
 | `logic-bug` | App logic bug (task creation behavior is wrong) | `REAL_BUG` → Issue |
 | `slow-network` | Artificial latency that makes tests timing-sensitive | `FLAKY` → log only |
 | `auth-break` | Login always fails regardless of credentials | `REAL_BUG` → Issue |
@@ -270,7 +270,7 @@ npm run test:e2e:slow-network
 ## Running a Live Demo
 
 1. Open the GitHub Actions tab for the repository and select the Playwright workflow.
-2. Click “Run workflow” and choose a `qa_mode` value (for example `selector-change` to force a locator failure).
+2. Click “Run workflow” and choose a `qa_mode` value (for example `selector-change` to force internal locator failures in tasks/profile flows).
 3. Watch the Playwright step fail while still uploading the HTML report and JSON results artifact.
 4. Confirm the agent step runs after the failure and posts its classification in logs.
 5. For `BROKEN_LOCATOR`, expect a PR opened against the repo with an updated test file; for `REAL_BUG`, expect a GitHub Issue created with the error and CI run link.

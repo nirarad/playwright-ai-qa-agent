@@ -1,7 +1,6 @@
 'use client'
 
-import { FormEvent, useEffect, useState } from 'react'
-import { getBreakMode, onBreakModeChange } from '@/lib/break-mode'
+import { FormEvent, useState } from 'react'
 
 interface AuthFormProps {
   mode: 'login' | 'register'
@@ -18,18 +17,6 @@ export const AuthForm = ({ mode, onSubmit, error }: AuthFormProps) => {
   const [password, setPassword] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [breakMode, setBreakMode] = useState(() => getBreakMode())
-
-  useEffect(() => {
-    const unsubscribe = onBreakModeChange((mode) => {
-      setBreakMode(mode)
-    })
-    return () => {
-      unsubscribe()
-    }
-  }, [])
-
-  const hasSelectorChange = breakMode === 'selector-change'
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -54,7 +41,7 @@ export const AuthForm = ({ mode, onSubmit, error }: AuthFormProps) => {
           type="email"
           value={email}
           onChange={(event) => setEmail(event.target.value)}
-          data-testid={hasSelectorChange ? 'email-field-v2' : 'email-input'}
+          data-testid="email-input"
           className="w-full rounded-md border border-slate-300 px-3 py-2"
           required
         />
@@ -68,7 +55,7 @@ export const AuthForm = ({ mode, onSubmit, error }: AuthFormProps) => {
           type="password"
           value={password}
           onChange={(event) => setPassword(event.target.value)}
-          data-testid={hasSelectorChange ? 'pwd-field-v2' : 'password-input'}
+          data-testid="password-input"
           className="w-full rounded-md border border-slate-300 px-3 py-2"
           required
         />
@@ -93,7 +80,7 @@ export const AuthForm = ({ mode, onSubmit, error }: AuthFormProps) => {
       <button
         type="submit"
         disabled={isSubmitting}
-        data-testid={hasSelectorChange ? 'submit-btn-v2' : 'submit-button'}
+        data-testid="submit-button"
         className="w-full rounded-md bg-blue-600 px-3 py-2 font-medium text-white disabled:opacity-60"
       >
         {isSubmitting ? 'Submitting...' : mode === 'login' ? 'Sign In' : 'Register'}

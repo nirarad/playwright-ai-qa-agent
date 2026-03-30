@@ -4,12 +4,14 @@ import Link from 'next/link'
 import { FormEvent, useState } from 'react'
 import { SessionGuard } from '@/components/session-guard'
 import { updateDisplayName } from '@/lib/auth'
+import { getBreakMode } from '@/lib/break-mode'
 import type { User } from '@/lib/types'
 
 const ProfileContent = ({ user }: { user: User }) => {
   const [displayName, setDisplayName] = useState(user.displayName)
   const [savedName, setSavedName] = useState(user.displayName)
   const [errorMessage, setErrorMessage] = useState('')
+  const hasSelectorChange = getBreakMode() === 'selector-change'
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -56,7 +58,7 @@ const ProfileContent = ({ user }: { user: User }) => {
           Display Name
         </label>
         <input
-          data-testid="displayname-edit-input"
+          data-testid={hasSelectorChange ? 'displayname-edit-input-v2' : 'displayname-edit-input'}
           value={displayName}
           onChange={(event) => setDisplayName(event.target.value)}
           className="w-full rounded-md border border-slate-300 px-3 py-2"

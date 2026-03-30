@@ -105,7 +105,7 @@ Purpose:
 - Validate successful login redirect.
 
 Failure behavior in non-normal modes:
-- `selector-change`: form locators fail.
+- `selector-change`: no intended login selector break; login locators remain stable.
 - `auth-break`: redirect assertion fails.
 
 ### `tests/showcase/tasks.spec.ts`
@@ -116,6 +116,7 @@ Purpose:
 - Validate delete flow works.
 
 Failure behavior in non-normal modes:
+- `selector-change`: internal task locators (input/button) are renamed and locator assertions fail.
 - `logic-bug`: added task title assertions fail.
 - `slow-network`: timing-sensitive assertions fail with tight timeout.
 
@@ -126,6 +127,7 @@ Purpose:
 - Validate display name update persists in UI.
 
 Failure behavior in non-normal modes:
+- `selector-change`: profile edit input locator is renamed and update flow assertions fail.
 - Cascading auth/session or timing issues create failure artifacts for agent evaluation.
 
 ---

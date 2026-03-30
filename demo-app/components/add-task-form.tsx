@@ -1,6 +1,7 @@
 'use client'
 
 import { FormEvent, useState } from 'react'
+import { getBreakMode } from '@/lib/break-mode'
 
 interface AddTaskFormProps {
   onAddTask: (title: string) => Promise<void> | void
@@ -10,6 +11,7 @@ interface AddTaskFormProps {
 export const AddTaskForm = ({ onAddTask, error }: AddTaskFormProps) => {
   const [title, setTitle] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const hasSelectorChange = getBreakMode() === 'selector-change'
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -28,14 +30,14 @@ export const AddTaskForm = ({ onAddTask, error }: AddTaskFormProps) => {
         <input
           type="text"
           placeholder="Add a task..."
-          data-testid="task-input"
+          data-testid={hasSelectorChange ? 'task-input-v2' : 'task-input'}
           value={title}
           onChange={(event) => setTitle(event.target.value)}
           className="w-full rounded-md border border-slate-300 px-3 py-2"
         />
         <button
           type="submit"
-          data-testid="add-task-button"
+          data-testid={hasSelectorChange ? 'add-task-button-v2' : 'add-task-button'}
           disabled={isSubmitting}
           className="rounded-md bg-blue-600 px-4 py-2 font-medium text-white disabled:opacity-60"
         >
