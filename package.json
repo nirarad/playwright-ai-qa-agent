@@ -15,6 +15,7 @@
     "start": "npm run start -w demo-app",
     "test": "npm run test -w agent",
     "agent": "npm run agent -w agent",
+    "agent:local-results": "npm run agent:local-results -w agent",
     "test:e2e:none": "set \"QA_MODE=none\" && npm run test:e2e -w demo-app",
     "test:e2e:selector-change": "set \"QA_MODE=selector-change\" && npm run test:e2e -w demo-app",
     "test:e2e:logic-bug": "set \"QA_MODE=logic-bug\" && npm run test:e2e -w demo-app",

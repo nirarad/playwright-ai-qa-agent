@@ -1,6 +1,6 @@
 # playwright-ai-qa-agent
 
-AI-powered QA pipeline: Playwright tests + Claude API agent that classifies failures, auto-heals broken locators via PR, and reports real bugs as GitHub Issues — zero external services.
+AI-powered QA pipeline: Playwright tests + an LLM-driven failure agent that classifies failures and (in later phases) reports bugs or opens healing PRs.
 
 ## Badges
 
@@ -8,7 +8,7 @@ AI-powered QA pipeline: Playwright tests + Claude API agent that classifies fail
 
 ## What This Is
 
-When an end-to-end test fails, teams lose time deciding whether the problem is a broken locator, a real regression, flaky timing, or a CI/environment issue. This repository turns that decision into a repeatable pipeline step. GitHub Actions runs Playwright, extracts failure context from artifacts, asks Claude to classify the failure, then takes a single automated action: open a PR for broken locators or file a GitHub Issue for real bugs. Everything runs inside GitHub Actions with the default `GITHUB_TOKEN` and one AI API key.
+When an end-to-end test fails, teams lose time deciding whether the problem is a broken locator, a real regression, flaky timing, or a CI/environment issue. This repository turns that decision into a repeatable pipeline step. GitHub Actions runs Playwright and preserves artifacts. The local/dev agent reads failure context from `test-results/results.json` and classifies failures using a configurable provider.
 
 ## Architecture Diagram
 
@@ -47,7 +47,7 @@ Run Playwright tests (JSON + HTML reports, screenshots/traces)
 | Test framework | Playwright (`@playwright/test`) |
 | Language | TypeScript (Node runtime) |
 | CI | GitHub Actions |
-| AI model | Claude (Anthropic Messages API) |
+| AI model | Configurable (`mock`, `cursor`, `anthropic`, `openai`, `google`) |
 | Bug tracking | GitHub Issues + Pull Requests |
 | Deployment | Vercel (demo app target) |
 
@@ -196,6 +196,44 @@ npm run test:e2e:none
 npm run agent
 ```
 
+### Run Agent With Explicit Results Path
+
+Use `AGENT_RESULTS_JSON_PATH` to point the agent to a specific results file.
+
+PowerShell:
+
+```powershell
+$env:AI_PROVIDER='mock'
+$env:AGENT_RESULTS_JSON_PATH='test-results/results.json'
+npm run agent
+```
+
+If your file is elsewhere:
+
+```powershell
+$env:AI_PROVIDER='mock'
+$env:AGENT_RESULTS_JSON_PATH='test-results/my-run/results.json'
+npm run agent
+```
+
+### Local Dev Provider Examples
+
+Mock provider (free, deterministic):
+
+```powershell
+$env:AI_PROVIDER='mock'
+npm run agent
+```
+
+Cursor provider (local OpenAI-compatible endpoint):
+
+```powershell
+$env:AI_PROVIDER='cursor'
+$env:AI_MODEL='your-local-model'
+$env:CURSOR_BASE_URL='http://127.0.0.1:8787/v1'
+npm run agent
+```
+
 7. Optional: run tests with preselected QA mode.
 
 ```bash
@@ -209,7 +247,17 @@ npm run test:e2e:slow-network
 
 | Variable | Required | Description |
 |---|---:|---|
-| `ANTHROPIC_API_KEY` | Yes | API key for the Claude classification and healing calls |
+| `AI_PROVIDER` | No | Provider selection: `mock`, `cursor`, `anthropic`, `openai`, `google` (default: `mock`) |
+| `AI_MODEL` | No | Model name passed to the selected provider |
+| `AGENT_RESULTS_JSON_PATH` | No | Path to Playwright JSON results file (default: `test-results/results.json`) |
+| `AGENT_CONFIDENCE_THRESHOLD` | No | Minimum confidence gate for downstream decisions (default: `0.75`) |
+| `AGENT_MAX_FAILURES_PER_RUN` | No | Maximum failures to process per run (default: `3`) |
+| `AGENT_ENABLE_IN_CI` | No | Enable agent execution in CI (default: `false` for Phase 1 dev mode) |
+| `CURSOR_BASE_URL` | No | Base URL for local cursor-compatible provider endpoint |
+| `CURSOR_API_KEY` | No | Optional API key for cursor provider endpoint |
+| `ANTHROPIC_API_KEY` | Conditionally | Required when `AI_PROVIDER=anthropic` |
+| `OPENAI_API_KEY` | Conditionally | Required when `AI_PROVIDER=openai` |
+| `GOOGLE_API_KEY` | Conditionally | Required when `AI_PROVIDER=google` |
 | `DEMO_APP_URL` | Yes (CI) | Public URL of the deployed TaskFlow app used by Playwright in GitHub Actions |
 | `BASE_URL` | No | Override target URL for local runs; defaults to `http://localhost:3000` in the Playwright config |
 | `QA_MODE` | No | Optional mode for showcase test runs (`none`, `selector-change`, `logic-bug`, `auth-break`, `slow-network`) |
@@ -227,6 +275,8 @@ npm run test:e2e:slow-network
 4. Confirm the agent step runs after the failure and posts its classification in logs.
 5. For `BROKEN_LOCATOR`, expect a PR opened against the repo with an updated test file; for `REAL_BUG`, expect a GitHub Issue created with the error and CI run link.
 6. Open the workflow run artifacts and view `test-results/html-report` to show the failure evidence alongside the agent output.
+
+Note: in Phase 1, agent execution is intentionally dev-focused and disabled in CI by default (`AGENT_ENABLE_IN_CI=false`).
 
 ## Roadmap
 
