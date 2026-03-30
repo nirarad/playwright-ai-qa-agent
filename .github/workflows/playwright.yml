@@ -91,6 +91,18 @@ jobs:
           }}
         uses: actions/deploy-pages@v4
 
+      - name: Add HTML report link to run summary
+        if: >
+          ${{
+            !cancelled() &&
+            github.event_name != 'pull_request' &&
+            (github.ref_name == 'main' || github.ref_name == 'develop')
+          }}
+        run: |
+          echo '## Playwright HTML report' >> "$GITHUB_STEP_SUMMARY"
+          echo '' >> "$GITHUB_STEP_SUMMARY"
+          echo '- **Report**: '"${{ steps.pages.outputs.page_url }}" >> "$GITHUB_STEP_SUMMARY"
+
       # Agent integration is intentionally disabled until the
       # failure-classification workflow is ready.
       # - name: Run AI Failure Agent

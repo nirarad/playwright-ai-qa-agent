@@ -76,6 +76,7 @@ Run Playwright tests (JSON + HTML reports, screenshots/traces)
 TaskFlow is a deliberately small task manager with auth and a few core flows that are realistic enough to test and debug. It uses localStorage instead of a database so it can run on the Vercel free tier without external dependencies. It also includes Break Modes that simulate common failure classes so you can demonstrate the pipeline on demand.
 
 - **Live URL**: `https://playwright-ai-qa-agent.vercel.app`
+- **Latest Playwright HTML report (GitHub Pages)**: `https://nirarad.github.io/playwright-ai-qa-agent/`
 - **Screenshot**:
 
 ```html
