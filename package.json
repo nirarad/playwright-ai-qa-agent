@@ -1,0 +1,20 @@
+{
+  "name": "playwright-ai-qa-agent",
+  "private": true,
+  "packageManager": "npm@10",
+  "engines": {
+    "node": ">=20"
+  },
+  "workspaces": [
+    "demo-app",
+    "agent"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w demo-app",
+    "build": "npm run build -w demo-app",
+    "start": "npm run start -w demo-app",
+    "test": "npm run test -w agent",
+    "agent": "npm run agent -w agent"
+  }
+}
+
