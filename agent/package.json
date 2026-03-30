@@ -1,0 +1,13 @@
+{
+  "name": "@playwright-ai-qa-agent/agent",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "agent": "tsx orchestrator.ts",
+    "test": "node -e \"process.exit(0)\""
+  },
+  "devDependencies": {
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}

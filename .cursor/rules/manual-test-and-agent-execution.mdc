@@ -1,0 +1,39 @@
+---
+description: Require manual execution for tests and agent runs
+globs: **/*
+alwaysApply: true
+---
+# Manual Test and Agent Execution (Mandatory)
+
+All test runs and agent executions must be performed manually by the user.
+
+## Required Behavior
+
+1. The coding agent must **not** execute npm commands related to testing or agent runtime.
+2. The coding agent must **not** trigger Playwright, unit tests, or orchestrator runs.
+3. When validation is needed, the coding agent should:
+ - explain what command to run,
+ - ask the user to run it manually,
+ - continue after the user shares results.
+
+## Forbidden Command Patterns
+
+- `npm run test`
+- `npm run test:*`
+- `npm run agent`
+- `npm test`
+- `npx playwright test`
+- `npx tsx agent/orchestrator.ts`
+
+## Good Example
+
+```text
+Please run `npm run agent` locally and share the output.
+Then I will analyze the result and continue.
+```
+
+## Bad Example
+
+```text
+Running `npm run agent` now...
+```
