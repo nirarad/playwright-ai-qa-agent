@@ -1,5 +1,4 @@
 import { getBreakMode } from '@/lib/break-mode'
-import { isQaFlagEnabled } from '@/lib/feature-flags'
 import type { Task } from '@/lib/types'
 
 const TASKS_KEY = 'demo_tasks'
@@ -22,8 +21,7 @@ const writeAllTasks = (tasks: Task[]): void => {
 }
 
 const delayIfNeeded = async (): Promise<void> => {
-  const hasDelay =
-    getBreakMode() === 'slow-network' || isQaFlagEnabled('env.slowNetwork')
+  const hasDelay = getBreakMode() === 'slow-network'
   if (!hasDelay) {
     return
   }
@@ -39,8 +37,7 @@ export const getTasks = (userId: string): Task[] => {
 export const addTask = async (userId: string, title: string): Promise<Task> => {
   await delayIfNeeded()
 
-  const forceLogicBug =
-    getBreakMode() === 'logic-bug' || isQaFlagEnabled('bug.emptyTaskSaves')
+  const forceLogicBug = getBreakMode() === 'logic-bug'
 
   if (!forceLogicBug && title.trim().length === 0) {
     throw new Error('Task title cannot be empty')

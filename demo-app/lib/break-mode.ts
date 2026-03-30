@@ -11,6 +11,13 @@ const allowedModes: BreakMode[] = [
   'auth-break',
 ]
 
+const isAllowedMode = (value: string | null): value is BreakMode => {
+  if (!value) {
+    return false
+  }
+  return allowedModes.includes(value as BreakMode)
+}
+
 export const getBreakMode = (): BreakMode => {
   if (typeof window === 'undefined') {
     return 'none'
@@ -18,18 +25,15 @@ export const getBreakMode = (): BreakMode => {
 
   let rawMode: string | null = null
   try {
-    rawMode = localStorage.getItem(BREAK_KEY)
+    rawMode = sessionStorage.getItem(BREAK_KEY)
   } catch {
     return 'none'
   }
 
-  if (!rawMode) {
+  if (!isAllowedMode(rawMode)) {
     return 'none'
   }
-  if (!allowedModes.includes(rawMode as BreakMode)) {
-    return 'none'
-  }
-  return rawMode as BreakMode
+  return rawMode
 }
 
 export const setBreakMode = (mode: BreakMode): void => {
@@ -37,7 +41,7 @@ export const setBreakMode = (mode: BreakMode): void => {
     return
   }
   try {
-    localStorage.setItem(BREAK_KEY, mode)
+    sessionStorage.setItem(BREAK_KEY, mode)
   } catch {
     return
   }
@@ -46,6 +50,24 @@ export const setBreakMode = (mode: BreakMode): void => {
       detail: mode,
     }),
   )
+}
+
+export const bootstrapBreakModeFromUrl = (): BreakMode => {
+  if (typeof window === 'undefined') {
+    return 'none'
+  }
+
+  const url = new URL(window.location.href)
+  const requestedMode = url.searchParams.get('qaMode')
+
+  if (!isAllowedMode(requestedMode)) {
+    return getBreakMode()
+  }
+
+  setBreakMode(requestedMode)
+  url.searchParams.delete('qaMode')
+  window.history.replaceState({}, '', url.toString())
+  return requestedMode
 }
 
 export const onBreakModeChange = (listener: (mode: BreakMode) => void) => {

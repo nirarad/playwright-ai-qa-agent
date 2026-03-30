@@ -20,16 +20,3 @@ export type BreakMode =
   | 'slow-network'
   | 'auth-break'
 
-export interface QaFlag {
-  key: string
-  type: 'ui' | 'bug' | 'env'
-  mode: 'fixed' | 'chance'
-  enabled?: boolean
-  chance?: number
-}
-
-export interface QaFlagsConfig {
-  version: number
-  flags: QaFlag[]
-}
-

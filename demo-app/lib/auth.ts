@@ -1,5 +1,4 @@
 import { getBreakMode } from '@/lib/break-mode'
-import { isQaFlagEnabled } from '@/lib/feature-flags'
 import type { User } from '@/lib/types'
 
 const USERS_KEY = 'demo_users'
@@ -44,8 +43,7 @@ export const register = (
 }
 
 export const login = (email: string, password: string): User => {
-  const isAuthBroken =
-    getBreakMode() === 'auth-break' || isQaFlagEnabled('bug.authBreak')
+  const isAuthBroken = getBreakMode() === 'auth-break'
 
   if (isAuthBroken) {
     throw new Error('Invalid credentials')

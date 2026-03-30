@@ -2,7 +2,6 @@
 
 import { FormEvent, useMemo, useState } from 'react'
 import { getBreakMode } from '@/lib/break-mode'
-import { isQaFlagEnabled } from '@/lib/feature-flags'
 
 interface AuthFormProps {
   mode: 'login' | 'register'
@@ -21,10 +20,7 @@ export const AuthForm = ({ mode, onSubmit, error }: AuthFormProps) => {
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const hasSelectorChange = useMemo(() => {
-    return (
-      getBreakMode() === 'selector-change' ||
-      isQaFlagEnabled('ui.selectorChange')
-    )
+    return getBreakMode() === 'selector-change'
   }, [])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
