@@ -23,6 +23,7 @@ const classifyFromPrompt = (prompt: string): ClassificationResult => {
       category: 'BROKEN_LOCATOR',
       confidence: 0.86,
       reason: 'Element targeting appears stale or renamed.',
+      issueTitle: 'Locator mismatch: selector no longer finds the element',
       suggestedFix: 'Prefer stable data-testid values and update locator usage.',
     }
   }
@@ -36,6 +37,7 @@ const classifyFromPrompt = (prompt: string): ClassificationResult => {
       category: 'ENV_ISSUE',
       confidence: 0.78,
       reason: 'Connectivity or environment setup issue is likely.',
+      issueTitle: 'Environment issue: connection refused',
       suggestedFix: null,
     }
   }
@@ -45,6 +47,7 @@ const classifyFromPrompt = (prompt: string): ClassificationResult => {
       category: 'FLAKY',
       confidence: 0.72,
       reason: 'Timing or environment instability is likely.',
+      issueTitle: 'Flaky behavior: timing mismatch detected',
       suggestedFix: null,
     }
   }
@@ -59,6 +62,7 @@ const classifyFromPrompt = (prompt: string): ClassificationResult => {
       category: 'REAL_BUG',
       confidence: 0.84,
       reason: 'Assertion mismatch indicates behavior diverges from expectation.',
+      issueTitle: 'UI behavior mismatch: expected state not reached',
       suggestedFix: null,
     }
   }
@@ -67,6 +71,7 @@ const classifyFromPrompt = (prompt: string): ClassificationResult => {
     category: 'ENV_ISSUE',
     confidence: 0.65,
     reason: 'Failure pattern does not clearly map to app logic or locator breakage.',
+    issueTitle: 'Environment issue: unable to classify failure source',
     suggestedFix: null,
   }
 }

@@ -26,6 +26,11 @@ export interface ClassificationResult {
   category: FailureCategory
   confidence: number
   reason: string
+  /**
+   * Short, direct issue title fragment.
+   * Must follow QA style: `<something>: <short failure summary>`
+   */
+  issueTitle: string
   suggestedFix: string | null
 }
 
@@ -61,6 +66,14 @@ export interface AgentConfig {
   }
   limits: {
     maxFailuresPerRun: number
+  }
+  actions: {
+    enableHealPr: boolean
+    enableBugIssue: boolean
+  }
+  github: {
+    baseBranch: string
+    issueLabels: string[]
   }
   runtime: {
     enableInCi: boolean

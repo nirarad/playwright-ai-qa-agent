@@ -20,6 +20,30 @@ const RULE_BROKEN_LOCATOR_FALLBACK_REASON =
 const RULE_BROKEN_LOCATOR_FALLBACK_SUGGESTED_FIX =
   'Update stale locator targets (data-testid or selector strategy) to match current DOM.'
 
+const buildFallbackIssueTitle = (
+  ctx: FailureContext,
+  category: FailureCategory,
+): string => {
+  const testNamePart = ctx.testName.replace(/\s+/g, ' ').trim()
+
+  const summaryByCategory: Record<FailureCategory, string> = {
+    BROKEN_LOCATOR: 'element not found by locator',
+    REAL_BUG: 'expected UI state not reached',
+    FLAKY: 'timing mismatch',
+    ENV_ISSUE: 'connection refused',
+  }
+
+  const summary = summaryByCategory[category]
+  // Keep under ~70 chars: `<test>: <summary>`
+  const maxTotal = 70
+  const maxTest = Math.max(10, maxTotal - summary.length - 3)
+  const testShort = testNamePart.length <= maxTest
+    ? testNamePart
+    : `${testNamePart.slice(0, maxTest).trim()}...`
+
+  return `${testShort}: ${summary}`.replace(/\u2014/g, ':')
+}
+
 const isFailureCategory = (value: unknown): value is FailureCategory => {
   return (
     value === 'BROKEN_LOCATOR' ||
@@ -46,6 +70,9 @@ export const assertClassificationResult = (value: unknown): ClassificationResult
   }
   if (typeof candidate.reason !== 'string' || candidate.reason.length === 0) {
     throw new Error('Classification output reason must be a non-empty string')
+  }
+  if (typeof candidate.issueTitle !== 'string' || candidate.issueTitle.length === 0) {
+    throw new Error('Classification output issueTitle must be a non-empty string')
   }
   if (typeof candidate.suggestedFix !== 'string' && candidate.suggestedFix !== null) {
     throw new Error('Classification output suggestedFix must be string or null')
@@ -112,19 +139,43 @@ const normalizeJsonCandidate = (raw: string): string => {
 
 const hasExplicitLocatorResolutionSignal = (ctx: FailureContext): boolean => {
   const signalText = `${ctx.error}\n${ctx.errorStack}\n${ctx.playwrightErrorMessages ?? ''}\n${ctx.errorContext ?? ''}`.toLowerCase()
-  const signatures = [
-    'waiting for getbytestid(',
-    'waiting for locator(',
+  const hasExpectedReceivedMismatch =
+    signalText.includes('expected:') && signalText.includes('received:')
+
+  // If the failure is an assertion mismatch, we should let the LLM decide.
+  // A real app bug often presents as "element not found" after an action.
+  if (hasExpectedReceivedMismatch) {
+    return false
+  }
+
+  // If the locator is getByText(), missing content can be REAL_BUG (logic bug)
+  // as often as it can be a broken selector. Do not lock the category.
+  if (signalText.includes('waiting for getbytext(')) {
+    return false
+  }
+
+  // Only lock BROKEN_LOCATOR on strong selector-resolution signatures.
+  const strongSignatures = [
     'strict mode violation',
-    'locator.fill:',
-    'locator.click:',
-    'locator.check:',
-    'locator is not visible',
-    'element is not attached',
-    'resolved to 0 elements',
+    'waiting for getbytestid(',
+    "waiting for locator('[data-testid",
+    "waiting for locator(\"[data-testid",
+    "waiting for locator('[aria-",
+    "waiting for locator(\"[aria-",
+    "waiting for locator('[role=",
+    "waiting for locator(\"[role=",
+    "waiting for locator('#",
+    'waiting for locator("#',
+    "waiting for locator('.",
+    'waiting for locator(".',
     'did not match any elements',
+    'resolved to 0 elements',
+    'locator.click:',
+    'locator.fill:',
+    'locator.check:',
   ]
-  return signatures.some((signature) => signalText.includes(signature))
+
+  return strongSignatures.some((signature) => signalText.includes(signature))
 }
 
 const truncateHeadForOllama = (value: string | undefined, maxChars: number): string | undefined => {
@@ -161,6 +212,7 @@ Required schema:
   "category": "BROKEN_LOCATOR" | "REAL_BUG" | "FLAKY" | "ENV_ISSUE",
   "confidence": 0.0-1.0,
   "reason": "one sentence",
+  "issueTitle": "short direct title fragment using ':' (<= 70 chars; no em-dash; do not include [BUG]/[ENV] prefix)",
   "suggestedFix": "string or null"
 }
 
@@ -193,6 +245,7 @@ Respond with valid JSON only:
   "category": "BROKEN_LOCATOR" | "REAL_BUG" | "FLAKY" | "ENV_ISSUE",
   "confidence": 0.0-1.0,
   "reason": "one sentence",
+  "issueTitle": "short direct title fragment using ':' (<= 70 chars; no em-dash; do not include [BUG]/[ENV] prefix)",
   "suggestedFix": "string or null"
 }
 
@@ -310,6 +363,7 @@ export const classifyFailure = async (ctx: FailureContext): Promise<Classificati
         category: 'BROKEN_LOCATOR',
         confidence: RULE_BASED_BROKEN_LOCATOR_CONFIDENCE,
         reason: parsed.reason,
+        issueTitle: buildFallbackIssueTitle(ctx, 'BROKEN_LOCATOR'),
         suggestedFix: parsed.suggestedFix,
       }
     }
@@ -330,6 +384,7 @@ export const classifyFailure = async (ctx: FailureContext): Promise<Classificati
       category: 'BROKEN_LOCATOR',
       confidence: RULE_BASED_BROKEN_LOCATOR_CONFIDENCE,
       reason: RULE_BROKEN_LOCATOR_FALLBACK_REASON,
+      issueTitle: buildFallbackIssueTitle(ctx, 'BROKEN_LOCATOR'),
       suggestedFix: RULE_BROKEN_LOCATOR_FALLBACK_SUGGESTED_FIX,
     }
   }

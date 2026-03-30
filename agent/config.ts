@@ -40,6 +40,20 @@ const parseNonNegativeInteger = (value: string | undefined, fallback: number): n
   return parsed
 }
 
+const parseLabelList = (value: string | undefined, fallback: string[]): string[] => {
+  if (!value || value.trim() === '') {
+    return fallback
+  }
+  const labels = value
+    .split(',')
+    .map((label) => label.trim())
+    .filter((label) => label.length > 0)
+  if (labels.length === 0) {
+    return fallback
+  }
+  return labels
+}
+
 const getApiKeyEnvVar = (provider: AgentConfig['llm']['provider']): string => {
   if (provider === 'anthropic') {
     return 'ANTHROPIC_API_KEY'
@@ -130,6 +144,17 @@ export const getAgentConfig = (): AgentConfig => {
     },
     limits: {
       maxFailuresPerRun: parseNumber(process.env.AGENT_MAX_FAILURES_PER_RUN, 3),
+    },
+    actions: {
+      enableHealPr: parseBoolean(process.env.AGENT_ENABLE_HEAL_PR, false),
+      enableBugIssue: parseBoolean(process.env.AGENT_ENABLE_BUG_ISSUE, false),
+    },
+    github: {
+      baseBranch: process.env.AGENT_GITHUB_BASE_BRANCH ?? 'main',
+      issueLabels: parseLabelList(process.env.AGENT_ISSUE_LABELS, [
+        'bug',
+        'automated-qa',
+      ]),
     },
     runtime: {
       // Phase 1 is dev-only by default.

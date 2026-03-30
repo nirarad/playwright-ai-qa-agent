@@ -3,6 +3,7 @@ import { getAgentConfig } from './config.js'
 import { extractFailures } from './context.js'
 import { loadEnvForAgent } from './env.js'
 import { logger } from './logger.js'
+import { createBugIssue } from './reporter.js'
 
 const sleep = async (durationMs: number): Promise<void> => {
   if (durationMs <= 0) {
@@ -26,6 +27,9 @@ const main = async (): Promise<void> => {
     enableInCi: config.runtime.enableInCi,
     resultsJsonPath: config.paths.resultsJson,
     ci: process.env.CI === 'true',
+    enableBugIssue: config.actions.enableBugIssue,
+    enableHealPr: config.actions.enableHealPr,
+    githubBaseBranch: config.github.baseBranch,
     ...(config.llm.provider === 'ollama'
       ? {
           ollamaMaxDomChars: config.ollama.maxDomChars,
@@ -36,7 +40,7 @@ const main = async (): Promise<void> => {
   })
 
   if (process.env.CI === 'true' && !config.runtime.enableInCi) {
-    logger.info('Agent skipped: CI execution disabled for Phase 1 development mode.')
+    logger.info('Agent skipped: AGENT_ENABLE_IN_CI is not true.')
     return
   }
 
@@ -46,34 +50,52 @@ const main = async (): Promise<void> => {
     return
   }
 
-  logger.info('Running classification-only mode', { failures: failures.length, phase: 'phase-1-dev' })
+  logger.info('Processing failed tests', {
+    failures: failures.length,
+    phase: 'phase-2',
+  })
 
   for (const [index, failure] of failures.entries()) {
+    let classification
     try {
-      const classification = await classifyFailure(failure)
-      const decision =
-        classification.confidence >= config.thresholds.confidence
-          ? 'ABOVE_THRESHOLD'
-          : 'BELOW_THRESHOLD'
-
-      logger.info('Failure classified', {
-        testName: failure.testName,
-        testFile: failure.testFile,
-        category: classification.category,
-        confidence: classification.confidence,
-        decision,
-        reason: classification.reason,
-        phase: 'phase-1-dev',
-        actionsExecuted: 'none',
-      })
+      classification = await classifyFailure(failure)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       logger.warn('Classification error', {
         testName: failure.testName,
         error: message,
-        phase: 'phase-1-dev',
+        phase: 'phase-2',
       })
+      const isLastFailure = index === failures.length - 1
+      if (!isLastFailure) {
+        await sleep(config.runtime.interRequestDelayMs)
+      }
+      continue
     }
+
+    const aboveThreshold =
+      classification.confidence >= config.thresholds.confidence
+    const decision = aboveThreshold ? 'ABOVE_THRESHOLD' : 'BELOW_THRESHOLD'
+
+    let actionsExecuted: 'github-issue' | 'none' = 'none'
+    const reportableCategory =
+      classification.category === 'REAL_BUG' ||
+      classification.category === 'ENV_ISSUE'
+    if (aboveThreshold && reportableCategory && config.actions.enableBugIssue) {
+      await createBugIssue(failure, classification, config)
+      actionsExecuted = 'github-issue'
+    }
+
+    logger.info('Failure classified', {
+      testName: failure.testName,
+      testFile: failure.testFile,
+      category: classification.category,
+      confidence: classification.confidence,
+      decision,
+      reason: classification.reason,
+      phase: 'phase-2',
+      actionsExecuted,
+    })
 
     const isLastFailure = index === failures.length - 1
     if (!isLastFailure) {
