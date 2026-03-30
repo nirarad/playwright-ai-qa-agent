@@ -1,7 +1,7 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import { getBreakMode, setBreakMode } from '@/lib/break-mode'
+import { useEffect, useMemo, useState } from 'react'
+import { getBreakMode, onBreakModeChange, setBreakMode } from '@/lib/break-mode'
 import type { BreakMode } from '@/lib/types'
 
 const modes: { value: BreakMode; label: string; description: string }[] = [
@@ -29,7 +29,7 @@ const modes: { value: BreakMode; label: string; description: string }[] = [
 ]
 
 export const DevPanel = () => {
-  const [currentMode, setCurrentMode] = useState<BreakMode>(() => getBreakMode())
+  const [currentMode, setCurrentMode] = useState<BreakMode>('none')
 
   const showPanel = useMemo(() => {
     if (process.env.NODE_ENV !== 'production') {
@@ -38,10 +38,18 @@ export const DevPanel = () => {
     return process.env.NEXT_PUBLIC_DEMO_MODE === 'true'
   }, [])
 
+  useEffect(() => {
+    setCurrentMode(getBreakMode())
+    const unsubscribe = onBreakModeChange((mode) => {
+      setCurrentMode(mode)
+    })
+    return () => {
+      unsubscribe()
+    }
+  }, [])
+
   const handleModeChange = (mode: BreakMode) => {
     setBreakMode(mode)
-    setCurrentMode(mode)
-    window.location.reload()
   }
 
   if (!showPanel) {
