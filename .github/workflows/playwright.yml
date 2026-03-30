@@ -18,6 +18,11 @@ on:
           - auth-break
           - slow-network
 
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
 jobs:
   test-and-analyze:
     runs-on: ubuntu-latest
@@ -55,6 +60,36 @@ jobs:
           name: playwright-results
           path: test-results/
           retention-days: 7
+
+      - name: Configure GitHub Pages
+        if: >
+          ${{
+            !cancelled() &&
+            github.event_name != 'pull_request' &&
+            (github.ref_name == 'main' || github.ref_name == 'develop')
+          }}
+        uses: actions/configure-pages@v5
+
+      - name: Upload HTML report to Pages
+        if: >
+          ${{
+            !cancelled() &&
+            github.event_name != 'pull_request' &&
+            (github.ref_name == 'main' || github.ref_name == 'develop')
+          }}
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: test-results/html-report
+
+      - name: Deploy HTML report to Pages
+        id: pages
+        if: >
+          ${{
+            !cancelled() &&
+            github.event_name != 'pull_request' &&
+            (github.ref_name == 'main' || github.ref_name == 'develop')
+          }}
+        uses: actions/deploy-pages@v4
 
       # Agent integration is intentionally disabled until the
       # failure-classification workflow is ready.
