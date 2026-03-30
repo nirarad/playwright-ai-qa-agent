@@ -1,7 +1,7 @@
 'use client'
 
-import { FormEvent, useState } from 'react'
-import { getBreakMode } from '@/lib/break-mode'
+import { FormEvent, useEffect, useState } from 'react'
+import { getBreakMode, onBreakModeChange } from '@/lib/break-mode'
 
 interface AddTaskFormProps {
   onAddTask: (title: string) => Promise<void> | void
@@ -11,7 +11,18 @@ interface AddTaskFormProps {
 export const AddTaskForm = ({ onAddTask, error }: AddTaskFormProps) => {
   const [title, setTitle] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const hasSelectorChange = getBreakMode() === 'selector-change'
+  const [hasSelectorChange, setHasSelectorChange] = useState(() => getBreakMode() === 'selector-change')
+
+  useEffect(() => {
+    setHasSelectorChange(getBreakMode() === 'selector-change')
+
+    const unsubscribe = onBreakModeChange((mode) => {
+      setHasSelectorChange(mode === 'selector-change')
+    })
+    return () => {
+      unsubscribe()
+    }
+  }, [])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()

@@ -1,17 +1,28 @@
 'use client'
 
 import Link from 'next/link'
-import { FormEvent, useState } from 'react'
+import { FormEvent, useEffect, useState } from 'react'
 import { SessionGuard } from '@/components/session-guard'
 import { updateDisplayName } from '@/lib/auth'
-import { getBreakMode } from '@/lib/break-mode'
+import { getBreakMode, onBreakModeChange } from '@/lib/break-mode'
 import type { User } from '@/lib/types'
 
 const ProfileContent = ({ user }: { user: User }) => {
   const [displayName, setDisplayName] = useState(user.displayName)
   const [savedName, setSavedName] = useState(user.displayName)
   const [errorMessage, setErrorMessage] = useState('')
-  const hasSelectorChange = getBreakMode() === 'selector-change'
+  const [hasSelectorChange, setHasSelectorChange] = useState(() => getBreakMode() === 'selector-change')
+
+  useEffect(() => {
+    setHasSelectorChange(getBreakMode() === 'selector-change')
+
+    const unsubscribe = onBreakModeChange((mode) => {
+      setHasSelectorChange(mode === 'selector-change')
+    })
+    return () => {
+      unsubscribe()
+    }
+  }, [])
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
