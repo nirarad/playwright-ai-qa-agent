@@ -58,6 +58,7 @@ export class GoogleClient implements LlmClient {
           generationConfig: {
             temperature: input.temperature,
             maxOutputTokens: input.maxTokens,
+            responseMimeType: 'application/json',
           },
         }),
       },

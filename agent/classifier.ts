@@ -37,6 +37,78 @@ export const assertClassificationResult = (value: unknown): ClassificationResult
   return candidate as ClassificationResult
 }
 
+const stripCodeFences = (value: string): string => {
+  const trimmed = value.trim()
+  const fencedMatch = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i)
+  if (!fencedMatch) {
+    return trimmed
+  }
+  return fencedMatch[1].trim()
+}
+
+const extractFirstJsonObject = (value: string): string => {
+  const start = value.indexOf('{')
+  if (start < 0) {
+    return value
+  }
+
+  let depth = 0
+  let inString = false
+  let escaped = false
+
+  for (let index = start; index < value.length; index += 1) {
+    const char = value[index]
+    if (inString) {
+      if (escaped) {
+        escaped = false
+      } else if (char === '\\') {
+        escaped = true
+      } else if (char === '"') {
+        inString = false
+      }
+      continue
+    }
+
+    if (char === '"') {
+      inString = true
+      continue
+    }
+    if (char === '{') {
+      depth += 1
+      continue
+    }
+    if (char === '}') {
+      depth -= 1
+      if (depth === 0) {
+        return value.slice(start, index + 1)
+      }
+    }
+  }
+
+  return value
+}
+
+const normalizeJsonCandidate = (raw: string): string => {
+  const withoutFences = stripCodeFences(raw)
+  return extractFirstJsonObject(withoutFences).trim()
+}
+
+const buildRepairPrompt = (rawResponse: string): string => {
+  return `Convert the following model output into valid JSON.
+
+Return JSON only. No markdown, no code fences, no prose.
+Required schema:
+{
+  "category": "BROKEN_LOCATOR" | "REAL_BUG" | "FLAKY" | "ENV_ISSUE",
+  "confidence": 0.0-1.0,
+  "reason": "one sentence",
+  "suggestedFix": "string or null"
+}
+
+Model output to repair:
+${rawResponse}`
+}
+
 export const classifyFailure = async (ctx: FailureContext): Promise<ClassificationResult> => {
   const config = getAgentConfig()
   const llm = getLlmClient(config)
@@ -91,8 +163,45 @@ ${ctx.testSource}`
     provider: config.llm.provider,
     model: config.llm.model,
     responseChars: raw.length,
+    rawResponse: raw,
   })
 
-  const parsed = JSON.parse(raw) as unknown
-  return assertClassificationResult(parsed)
+  const normalized = normalizeJsonCandidate(raw)
+  logger.debug('Normalized classification response', {
+    provider: config.llm.provider,
+    model: config.llm.model,
+    normalizedChars: normalized.length,
+    normalizedResponse: normalized,
+  })
+
+  try {
+    const parsed = JSON.parse(normalized) as unknown
+    return assertClassificationResult(parsed)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    logger.warn('Primary classification parse failed, attempting response repair', {
+      provider: config.llm.provider,
+      model: config.llm.model,
+      error: message,
+    })
+
+    const repairedRaw = await llm.classifyFailure({
+      prompt: buildRepairPrompt(raw),
+      maxTokens: config.llm.maxTokens.classify,
+      temperature: 0,
+    })
+    const repairedNormalized = normalizeJsonCandidate(repairedRaw)
+
+    logger.debug('Received repaired classification response', {
+      provider: config.llm.provider,
+      model: config.llm.model,
+      responseChars: repairedRaw.length,
+      rawResponse: repairedRaw,
+      normalizedChars: repairedNormalized.length,
+      normalizedResponse: repairedNormalized,
+    })
+
+    const parsed = JSON.parse(repairedNormalized) as unknown
+    return assertClassificationResult(parsed)
+  }
 }
