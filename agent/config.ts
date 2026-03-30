@@ -24,6 +24,22 @@ const parseBoolean = (value: string | undefined, fallback: boolean): boolean => 
   throw new Error(`Invalid boolean env value: ${value}`)
 }
 
+const parsePositiveInteger = (value: string | undefined, fallback: number): number => {
+  const parsed = parseNumber(value, fallback)
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`Expected a positive integer but received: ${parsed}`)
+  }
+  return parsed
+}
+
+const parseNonNegativeInteger = (value: string | undefined, fallback: number): number => {
+  const parsed = parseNumber(value, fallback)
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    throw new Error(`Expected a non-negative integer but received: ${parsed}`)
+  }
+  return parsed
+}
+
 const getApiKeyEnvVar = (provider: AgentConfig['llm']['provider']): string => {
   if (provider === 'anthropic') {
     return 'ANTHROPIC_API_KEY'
@@ -34,9 +50,6 @@ const getApiKeyEnvVar = (provider: AgentConfig['llm']['provider']): string => {
   if (provider === 'google') {
     return 'GOOGLE_API_KEY'
   }
-  if (provider === 'cursor') {
-    return 'CURSOR_API_KEY'
-  }
   return 'MOCK_API_KEY'
 }
 
@@ -46,8 +59,7 @@ export const getAgentConfig = (): AgentConfig => {
     providerRaw !== 'mock' &&
     providerRaw !== 'anthropic' &&
     providerRaw !== 'openai' &&
-    providerRaw !== 'google' &&
-    providerRaw !== 'cursor'
+    providerRaw !== 'google'
   ) {
     throw new Error(`Unsupported AI_PROVIDER: ${providerRaw}`)
   }
@@ -68,6 +80,11 @@ export const getAgentConfig = (): AgentConfig => {
       temperature: {
         classify: parseNumber(process.env.AGENT_TEMPERATURE_CLASSIFY, 0),
       },
+      retry: {
+        maxAttempts: parsePositiveInteger(process.env.AGENT_LLM_MAX_ATTEMPTS, 3),
+        initialDelayMs: parsePositiveInteger(process.env.AGENT_LLM_RETRY_INITIAL_DELAY_MS, 1000),
+        maxDelayMs: parsePositiveInteger(process.env.AGENT_LLM_RETRY_MAX_DELAY_MS, 8000),
+      },
     },
     thresholds: {
       confidence,
@@ -78,6 +95,7 @@ export const getAgentConfig = (): AgentConfig => {
     runtime: {
       // Phase 1 is dev-only by default.
       enableInCi: parseBoolean(process.env.AGENT_ENABLE_IN_CI, false),
+      interRequestDelayMs: parseNonNegativeInteger(process.env.AGENT_INTER_REQUEST_DELAY_MS, 750),
     },
     paths: {
       resultsJson: process.env.AGENT_RESULTS_JSON_PATH ?? 'test-results/results.json',

@@ -1,5 +1,6 @@
 import type { LlmClient } from './types.js'
 import { logger } from '../logger.js'
+import { withProviderRetry } from './retry.js'
 
 interface OpenAiChoice {
   message?: {
@@ -35,32 +36,34 @@ export class OpenAiClient implements LlmClient {
       promptChars: input.prompt.length,
     })
 
-    const response = await fetch(`${this.baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: this.model,
-        temperature: input.temperature,
-        max_tokens: input.maxTokens,
-        messages: [
-          {
-            role: 'user',
-            content: input.prompt,
-          },
-        ],
-      }),
+    const data = await withProviderRetry('openai', async () => {
+      const response = await fetch(`${this.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: this.model,
+          temperature: input.temperature,
+          max_tokens: input.maxTokens,
+          messages: [
+            {
+              role: 'user',
+              content: input.prompt,
+            },
+          ],
+        }),
+      })
+
+      if (!response.ok) {
+        const text = await response.text()
+        throw new Error(`OpenAI classify request failed: ${response.status} ${text}`)
+      }
+
+      logger.debug('OpenAI request succeeded', { status: response.status })
+      return (await response.json()) as OpenAiResponse
     })
-
-    if (!response.ok) {
-      const text = await response.text()
-      throw new Error(`OpenAI classify request failed: ${response.status} ${text}`)
-    }
-
-    logger.debug('OpenAI request succeeded', { status: response.status })
-    const data = (await response.json()) as OpenAiResponse
     const content = data.choices?.[0]?.message?.content?.trim()
     if (!content) {
       throw new Error('OpenAI response missing message content')

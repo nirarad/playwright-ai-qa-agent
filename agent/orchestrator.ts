@@ -4,6 +4,13 @@ import { extractFailures } from './context.js'
 import { loadEnvForAgent } from './env.js'
 import { logger } from './logger.js'
 
+const sleep = async (durationMs: number): Promise<void> => {
+  if (durationMs <= 0) {
+    return
+  }
+  await new Promise((resolve) => setTimeout(resolve, durationMs))
+}
+
 const main = async (): Promise<void> => {
   loadEnvForAgent()
   const config = getAgentConfig()
@@ -12,6 +19,10 @@ const main = async (): Promise<void> => {
     model: config.llm.model,
     threshold: config.thresholds.confidence,
     maxFailuresPerRun: config.limits.maxFailuresPerRun,
+    interRequestDelayMs: config.runtime.interRequestDelayMs,
+    llmMaxAttempts: config.llm.retry.maxAttempts,
+    llmRetryInitialDelayMs: config.llm.retry.initialDelayMs,
+    llmRetryMaxDelayMs: config.llm.retry.maxDelayMs,
     enableInCi: config.runtime.enableInCi,
     resultsJsonPath: config.paths.resultsJson,
     ci: process.env.CI === 'true',
@@ -30,7 +41,7 @@ const main = async (): Promise<void> => {
 
   logger.info('Running classification-only mode', { failures: failures.length, phase: 'phase-1-dev' })
 
-  for (const failure of failures) {
+  for (const [index, failure] of failures.entries()) {
     try {
       const classification = await classifyFailure(failure)
       const decision =
@@ -55,6 +66,11 @@ const main = async (): Promise<void> => {
         error: message,
         phase: 'phase-1-dev',
       })
+    }
+
+    const isLastFailure = index === failures.length - 1
+    if (!isLastFailure) {
+      await sleep(config.runtime.interRequestDelayMs)
     }
   }
 }

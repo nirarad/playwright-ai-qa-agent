@@ -17,6 +17,8 @@ interface PlaywrightResult {
 }
 
 interface PlaywrightTest {
+  status?: string
+  expectedStatus?: string
   results?: PlaywrightResult[]
 }
 
@@ -33,6 +35,23 @@ interface PlaywrightSuite {
 
 interface PlaywrightJson {
   suites?: PlaywrightSuite[]
+}
+
+const isFailureResultStatus = (status: string | undefined): boolean => {
+  if (!status) {
+    return false
+  }
+  return status === 'failed' || status === 'timedOut' || status === 'interrupted'
+}
+
+const isUnexpectedTestStatus = (
+  status: string | undefined,
+  expectedStatus: string | undefined,
+): boolean => {
+  if (!status || !expectedStatus) {
+    return false
+  }
+  return status === 'unexpected' && expectedStatus === 'passed'
 }
 
 const buildRunUrl = (): string => {
@@ -71,7 +90,10 @@ const collectFailuresFromSuite = (suite: PlaywrightSuite, failures: FailureConte
 
     for (const test of spec.tests ?? []) {
       for (const result of test.results ?? []) {
-        if (result.status !== 'failed') {
+        const isFailure =
+          isFailureResultStatus(result.status) ||
+          isUnexpectedTestStatus(test.status, test.expectedStatus)
+        if (!isFailure) {
           continue
         }
 

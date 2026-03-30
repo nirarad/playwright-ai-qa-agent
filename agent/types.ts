@@ -25,9 +25,8 @@ export interface ClassificationResult {
 
 export interface AgentConfig {
   llm: {
-    // Plan providers: anthropic | openai | google.
-    // mock and cursor are kept as dev-oriented providers.
-    provider: 'anthropic' | 'openai' | 'google' | 'mock' | 'cursor'
+    // Supported providers.
+    provider: 'anthropic' | 'openai' | 'google' | 'mock'
     model: string
     apiKeyEnvVar: string
     maxTokens: {
@@ -35,6 +34,11 @@ export interface AgentConfig {
     }
     temperature: {
       classify: number
+    }
+    retry: {
+      maxAttempts: number
+      initialDelayMs: number
+      maxDelayMs: number
     }
   }
   thresholds: {
@@ -45,6 +49,7 @@ export interface AgentConfig {
   }
   runtime: {
     enableInCi: boolean
+    interRequestDelayMs: number
   }
   paths: {
     resultsJson: string

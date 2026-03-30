@@ -47,7 +47,7 @@ Run Playwright tests (JSON + HTML reports, screenshots/traces)
 | Test framework | Playwright (`@playwright/test`) |
 | Language | TypeScript (Node runtime) |
 | CI | GitHub Actions |
-| AI model | Configurable (`mock`, `cursor`, `anthropic`, `openai`, `google`) |
+| AI model | Configurable (`mock`, `anthropic`, `openai`, `google`) |
 | Bug tracking | GitHub Issues + Pull Requests |
 | Deployment | Vercel (demo app target) |
 
@@ -225,15 +225,6 @@ $env:AI_PROVIDER='mock'
 npm run agent
 ```
 
-Cursor provider (local OpenAI-compatible endpoint):
-
-```powershell
-$env:AI_PROVIDER='cursor'
-$env:AI_MODEL='your-local-model'
-$env:CURSOR_BASE_URL='http://127.0.0.1:8787/v1'
-npm run agent
-```
-
 7. Optional: run tests with preselected QA mode.
 
 ```bash
@@ -247,14 +238,12 @@ npm run test:e2e:slow-network
 
 | Variable | Required | Description |
 |---|---:|---|
-| `AI_PROVIDER` | No | Provider selection: `mock`, `cursor`, `anthropic`, `openai`, `google` (default: `mock`) |
+| `AI_PROVIDER` | No | Provider selection: `mock`, `anthropic`, `openai`, `google` (default: `mock`) |
 | `AI_MODEL` | No | Model name passed to the selected provider |
 | `AGENT_RESULTS_JSON_PATH` | No | Path to Playwright JSON results file (default: `test-results/results.json`) |
 | `AGENT_CONFIDENCE_THRESHOLD` | No | Minimum confidence gate for downstream decisions (default: `0.75`) |
 | `AGENT_MAX_FAILURES_PER_RUN` | No | Maximum failures to process per run (default: `3`) |
 | `AGENT_ENABLE_IN_CI` | No | Enable agent execution in CI (default: `false` for Phase 1 dev mode) |
-| `CURSOR_BASE_URL` | No | Base URL for local cursor-compatible provider endpoint |
-| `CURSOR_API_KEY` | No | Optional API key for cursor provider endpoint |
 | `ANTHROPIC_API_KEY` | Conditionally | Required when `AI_PROVIDER=anthropic` |
 | `OPENAI_API_KEY` | Conditionally | Required when `AI_PROVIDER=openai` |
 | `GOOGLE_API_KEY` | Conditionally | Required when `AI_PROVIDER=google` |
