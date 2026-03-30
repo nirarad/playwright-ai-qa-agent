@@ -1,7 +1,7 @@
 'use client'
 
-import { FormEvent, useMemo, useState } from 'react'
-import { getBreakMode } from '@/lib/break-mode'
+import { FormEvent, useEffect, useState } from 'react'
+import { getBreakMode, onBreakModeChange } from '@/lib/break-mode'
 
 interface AuthFormProps {
   mode: 'login' | 'register'
@@ -18,10 +18,18 @@ export const AuthForm = ({ mode, onSubmit, error }: AuthFormProps) => {
   const [password, setPassword] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [breakMode, setBreakMode] = useState(() => getBreakMode())
 
-  const hasSelectorChange = useMemo(() => {
-    return getBreakMode() === 'selector-change'
+  useEffect(() => {
+    const unsubscribe = onBreakModeChange((mode) => {
+      setBreakMode(mode)
+    })
+    return () => {
+      unsubscribe()
+    }
   }, [])
+
+  const hasSelectorChange = breakMode === 'selector-change'
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
