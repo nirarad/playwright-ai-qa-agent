@@ -89,6 +89,32 @@ TaskFlow is a deliberately small task manager with auth and a few core flows tha
 | `slow-network` | Artificial latency that makes tests timing-sensitive | `FLAKY` → log only |
 | `auth-break` | Login always fails regardless of credentials | `REAL_BUG` → Issue |
 
+### `qaMode` Session Injection
+
+Use `qaMode` query param when opening a new browser session to preselect QA mode for that session.
+
+- `none`
+- `selector-change`
+- `logic-bug`
+- `slow-network`
+- `auth-break`
+
+Examples:
+
+```text
+https://YOUR_VERCEL_URL.vercel.app/?qaMode=none
+https://YOUR_VERCEL_URL.vercel.app/?qaMode=selector-change
+https://YOUR_VERCEL_URL.vercel.app/?qaMode=logic-bug
+https://YOUR_VERCEL_URL.vercel.app/?qaMode=slow-network
+https://YOUR_VERCEL_URL.vercel.app/?qaMode=auth-break
+```
+
+Notes:
+
+- `qaMode` is session-scoped and stored in `sessionStorage`.
+- It applies to the current tab/session only.
+- The app removes `qaMode` from the URL after bootstrap.
+
 ## Project Structure
 
 ```text
@@ -167,6 +193,12 @@ npx playwright test
 
 ```bash
 npm run agent
+```
+
+7. Optional: run tests with preselected QA mode.
+
+```bash
+BREAK_MODE=selector-change npx playwright test
 ```
 
 ## Environment Variables

@@ -61,12 +61,13 @@ export default defineConfig({
 
 ## Base Fixture (`tests/fixtures/base.ts`)
 
-Extends Playwright's `test` with helpers for seeding localStorage and logging in.
+Extends Playwright's `test` with helpers for seeding storage and logging in.
 
 ```typescript
 import { test as base, Page } from "@playwright/test";
 
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:3000";
+const BREAK_MODE = process.env.BREAK_MODE ?? "none";
 
 export interface TestFixtures {
   seededPage: Page;
@@ -76,7 +77,7 @@ export interface TestFixtures {
 export const test = base.extend<TestFixtures>({
   // seededPage: navigates to app and injects seed data into localStorage
   seededPage: async ({ page }, use) => {
-    await page.goto(BASE_URL);
+    await page.goto(`${BASE_URL}/?qaMode=${BREAK_MODE}`);
 
     await page.evaluate(() => {
       localStorage.setItem(
@@ -91,7 +92,7 @@ export const test = base.extend<TestFixtures>({
         ])
       );
       localStorage.setItem("demo_tasks", JSON.stringify([]));
-      localStorage.setItem("demo_break_mode", "none");
+      sessionStorage.setItem("demo_break_mode", BREAK_MODE);
     });
 
     await use(page);
@@ -99,7 +100,7 @@ export const test = base.extend<TestFixtures>({
 
   // loggedInPage: seeded + already authenticated
   loggedInPage: async ({ page }, use) => {
-    await page.goto(BASE_URL);
+    await page.goto(`${BASE_URL}/?qaMode=${BREAK_MODE}`);
 
     await page.evaluate(() => {
       const user = {
@@ -111,7 +112,7 @@ export const test = base.extend<TestFixtures>({
       localStorage.setItem("demo_users", JSON.stringify([user]));
       localStorage.setItem("demo_tasks", JSON.stringify([]));
       localStorage.setItem("demo_session", JSON.stringify(user));
-      localStorage.setItem("demo_break_mode", "none");
+      sessionStorage.setItem("demo_break_mode", BREAK_MODE);
     });
 
     await page.goto(`${BASE_URL}/dashboard`);
@@ -439,7 +440,7 @@ For demos, use the `workflow_dispatch` manual trigger in GitHub Actions with a b
 3. Click `Run workflow`
 4. Choose a break mode from the dropdown
 
-But since break mode is controlled by localStorage (client-side), you need to activate it via Playwright itself before the test run. Add a global setup file:
+Since break mode is session-scoped in the browser, preselect it when opening each test session.
 
 **`tests/global-setup.ts`**
 ```typescript
@@ -447,14 +448,11 @@ import { chromium } from "@playwright/test";
 
 async function globalSetup() {
   const breakMode = process.env.BREAK_MODE ?? "none";
-  if (breakMode === "none") return;
 
   const browser = await chromium.launch();
   const page = await browser.newPage();
-  await page.goto(process.env.BASE_URL ?? "http://localhost:3000");
-  await page.evaluate((mode) => {
-    localStorage.setItem("demo_break_mode", mode);
-  }, breakMode);
+  const baseUrl = process.env.BASE_URL ?? "http://localhost:3000";
+  await page.goto(`${baseUrl}/?qaMode=${breakMode}`);
   await browser.close();
 }
 

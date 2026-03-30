@@ -17,7 +17,6 @@ Build a portfolio-friendly end-to-end system where:
 - **Artifact-first debugging**: pipeline always uploads Playwright HTML report + JSON results
 - **Safety rails**: AI agent only takes action when confidence is high
 - **Human-in-the-loop**: any generated PR is for review, not auto-merge
-- **Reproducible randomness**: any “chance-based” failures must be seedable for CI
 
 ---
 
@@ -49,23 +48,29 @@ Build the app described in `docs/plan-01-demo-web-app.md`:
 - Routes:
 	- `/`, `/login`, `/register`, `/dashboard`, `/profile`
 - Data model stored in `localStorage`:
-	- users, session, tasks, break mode
+	- users, auth session, tasks
+- Break mode state stored in `sessionStorage`:
+	- session-scoped, current-tab behavior only
+- Session bootstrap support:
+	- app can preselect break mode at session start from URL query param (for Playwright)
 - Break Mode toggles (dev panel):
 	- `selector-change`: rename `data-testid` attributes (locator break)
 	- `logic-bug`: corrupt task creation logic (real bug)
 	- `slow-network`: add delay (flaky)
 	- `auth-break`: login always fails (real bug)
-- Vercel feature flags (fixed or chance-based):
-	- UI changes (element/attribute changes → locator failures)
-	- bug injection (logic failures)
-	- env issue injection (misconfig/infra-like failures)
-	- chance-based flags must be deterministic under a provided seed
+- Dev panel visibility:
+	- always visible in all environments (including production demos)
+- Break mode isolation:
+	- toggles affect only the current browser session/tab
+- Test run control:
+	- Playwright can inject a specific mode when opening a new session
 - Ensure key elements have stable `data-testid` identifiers in normal mode
 
 Exit criteria:
 
 - App is deployable to Vercel and works end-to-end
-- Break Mode + Vercel feature flags can be set and observed reliably (including seeded chance)
+- Break Mode can be set and observed reliably in local and deployed sessions
+- Break mode resets by session and does not leak across sessions
 
 ---
 
@@ -90,7 +95,7 @@ Implement the suite described in `docs/plan-02-playwright-pipeline.md`:
 Exit criteria:
 
 - Tests pass in normal mode against local and deployed app
-- At least one break mode or feature flag produces each intended failure category signal
+- At least one break mode produces each intended failure category signal
 
 ---
 
@@ -111,7 +116,6 @@ Exit criteria:
 
 - A failing run still uploads artifacts and runs the agent
 - The workflow ends in failed state when tests fail
-- Feature flags can be controlled from CI (fixed + seeded chance)
 
 ---
 

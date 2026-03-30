@@ -7,7 +7,7 @@ A deployable web app that serves as the test target for the QA AI agent. It must
 **Deploy to:** Vercel (free tier — no credit card required for hobby projects)  
 **Framework:** Next.js 14 (App Router)  
 **Styling:** Tailwind CSS  
-**State:** localStorage (no database required for free tier)
+**State:** browser storage (session + local, no database required for free tier)
 
 ---
 
@@ -27,7 +27,19 @@ A simple **Task Manager** with authentication. Three core flows that are realist
 
 ### Deliberate Breakable States
 
-The app includes a **"Break Mode"** toggle in a dev panel (visible only in non-production env). When toggled, it simulates common real-world breakages:
+The app includes an always-visible **"Break Mode"** toggle in a QA dev panel. Break mode is stored in `sessionStorage` so it only affects the current browser tab/session and resets when the session ends.
+
+### Session Bootstrap for Preselected Mode
+
+Support a deterministic way to inject a specific break mode when a new browser session starts. This is used by Playwright to preselect the QA mode for a run.
+
+- Read `qaMode` from URL query params on first app load
+- If `qaMode` is valid, write it to `sessionStorage` key `demo_break_mode`
+- Remove `qaMode` from the URL after applying it (keep clean URLs)
+- Precedence order:
+	1. `qaMode` query param at session start
+	2. Existing `sessionStorage` value for the current session
+	3. Default `none`
 
 | Break Mode | What changes | Expected test failure type |
 |---|---|---|
@@ -36,75 +48,7 @@ The app includes a **"Break Mode"** toggle in a dev panel (visible only in non-p
 | `slow-network` | Adds 3s delay to all form submissions | FLAKY |
 | `auth-break` | Login always returns "Invalid credentials" | REAL_BUG |
 
-This gives you on-demand control over what the agent detects.
-
----
-
-## Vercel Feature Flags (Fixed or Probabilistic)
-
-In addition to local `Break Mode`, support **Vercel-configured feature flags** that can:
-
-- introduce **UI changes** (element/attribute changes → `BROKEN_LOCATOR`)
-- introduce **app bugs** (logic failures → `REAL_BUG`)
-- introduce **environment issues** (misconfig/network-like failures → `ENV_ISSUE`)
-
-### Requirements
-
-- **Fixed flags**: always on/off
-- **Probabilistic flags**: activated with a `chance` percent (0–100)
-- **Reproducible randomness for CI**: probabilistic evaluation must be controllable via a seed so Playwright runs are deterministic
-
-### Recommended Configuration
-
-Store a JSON config in a Vercel environment variable:
-
-- `NEXT_PUBLIC_QA_FLAGS`: JSON string describing flags and how they trigger
-- `NEXT_PUBLIC_QA_FLAGS_SEED_SOURCE`: how to seed randomness (recommended: request header)
-
-Example `NEXT_PUBLIC_QA_FLAGS`:
-
-```json
-{
-  "version": 1,
-  "flags": [
-    { "key": "ui.selectorChange", "type": "ui", "mode": "fixed", "enabled": false },
-    { "key": "bug.emptyTaskSaves", "type": "bug", "mode": "chance", "chance": 25 },
-    { "key": "env.misconfiguredApi", "type": "env", "mode": "fixed", "enabled": false }
-  ]
-}
-```
-
-Example `NEXT_PUBLIC_QA_FLAGS_SEED_SOURCE`:
-
-- `header:x-qa-run-seed` (recommended for Playwright/CI)
-- `query:seed` (useful for manual demos)
-
-### How Flags Map to Failure Types
-
-- **UI change flags**:
-	- rename `data-testid` or change structure/labels to break locators predictably
-	- expected classification: `BROKEN_LOCATOR`
-- **Bug flags**:
-	- corrupt business logic (e.g. allow empty task creation, auth always fails)
-	- expected classification: `REAL_BUG`
-- **Env issue flags**:
-	- simulate missing required env/config (e.g. route handler refuses to run when a required env var is absent)
-	- simulate non-actionable infra-like failure (e.g. server returns a 500 with a specific “misconfigured” marker)
-	- expected classification: `ENV_ISSUE`
-
-### Seeding Strategy (Deterministic “Chance”)
-
-To keep `chance`-based behavior reproducible:
-
-- Derive a random number from a **seed** + **flag key**
-- Seed comes from `NEXT_PUBLIC_QA_FLAGS_SEED_SOURCE`:
-	- Playwright sets a stable seed header (e.g. `x-qa-run-seed: <run-id>`)
-	- manual demos can use a query param seed
-
-This allows:
-
-- **reproducible CI runs** (same seed → same outcomes)
-- **controlled variability** (change seed to get different outcomes intentionally)
+This gives you on-demand control over what the agent detects without leaking state between sessions.
 
 ---
 
@@ -263,11 +207,27 @@ export type BreakMode =
 const BREAK_KEY = "demo_break_mode";
 
 export function getBreakMode(): BreakMode {
-  return (localStorage.getItem(BREAK_KEY) as BreakMode) ?? "none";
+  return (sessionStorage.getItem(BREAK_KEY) as BreakMode) ?? "none";
 }
 
 export function setBreakMode(mode: BreakMode): void {
-  localStorage.setItem(BREAK_KEY, mode);
+  sessionStorage.setItem(BREAK_KEY, mode);
+}
+
+export function bootstrapBreakModeFromUrl(): BreakMode {
+  const url = new URL(window.location.href);
+  const requested = url.searchParams.get("qaMode");
+  const allowed = ["none", "selector-change", "logic-bug", "slow-network", "auth-break"];
+
+  if (!requested || !allowed.includes(requested)) {
+    return getBreakMode();
+  }
+
+  const mode = requested as BreakMode;
+  setBreakMode(mode);
+  url.searchParams.delete("qaMode");
+  window.history.replaceState({}, "", url.toString());
+  return mode;
 }
 ```
 
@@ -359,7 +319,9 @@ export function AuthForm({ mode, onSubmit, error }: Props) {
 
 ## Dev Panel (`components/DevPanel.tsx`)
 
-Visible only when `NODE_ENV !== "production"` — or controlled by a query param `?dev=true` so you can show it in prod for demos.
+Always visible in all environments for QA demos and interview walkthroughs.
+
+The panel should initialize its selected mode from `bootstrapBreakModeFromUrl()` on mount so Playwright can preselect mode via query param when opening a fresh session.
 
 ```tsx
 "use client";
@@ -467,27 +429,15 @@ vercel --prod
 Vercel auto-detects Next.js. No config needed beyond `vercel.json`.  
 Free tier gives: custom domain, HTTPS, unlimited deployments, 100GB bandwidth/month.
 
-### Environment Variable for Demo Mode
+### Dev Panel Visibility
 
-In Vercel dashboard: `Settings > Environment Variables`
-
-Add:
-```
-NEXT_PUBLIC_DEMO_MODE=true
-```
-
-Use this to always show the Dev Panel in production for portfolio demos:
-
-```tsx
-// In layout.tsx
-{process.env.NEXT_PUBLIC_DEMO_MODE === "true" && <DevPanel />}
-```
+No environment toggle is required for panel visibility. Keep `<DevPanel />` mounted in `layout.tsx` for all environments.
 
 ---
 
 ## Seed Data for Testing
 
-Add a seed script that pre-populates localStorage via a special route `/api/seed` (called by Playwright `beforeAll`):
+Add a seed script that returns deterministic auth/task payload via `/api/seed` (called by Playwright `beforeAll`):
 
 ```typescript
 // app/api/seed/route.ts
@@ -511,12 +461,17 @@ export async function POST() {
 
 In Playwright tests:
 ```typescript
+const breakMode = process.env.BREAK_MODE ?? "none";
+await page.goto(`${BASE_URL}/?qaMode=${breakMode}`);
+
 const seed = await fetch(`${BASE_URL}/api/seed`, { method: "POST" });
 const data = await seed.json();
 await page.addInitScript((d) => {
   for (const [key, value] of Object.entries(d)) {
     localStorage.setItem(key, value as string);
   }
+  // If query param is not used in a specific test, seed fallback mode
+  sessionStorage.setItem("demo_break_mode", breakMode);
 }, data);
 ```
 
@@ -528,4 +483,4 @@ await page.addInitScript((d) => {
 - On-demand failure modes that map to exact agent classification categories
 - Clean `data-testid` structure that mirrors production engineering standards
 - Seed data pattern that makes tests deterministic
-- Dev Panel that you can demo live: "watch me break the app and the agent catches it"
+- Always-visible Dev Panel with session-scoped break mode: "watch me break this session and the agent catches it"
