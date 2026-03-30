@@ -1,0 +1,97 @@
+---
+description: Technology stack, versions, and best practices for this repo
+globs: **/*
+alwaysApply: true
+---
+# Technology Stack
+
+This repo is a portfolio-grade QA automation system:
+
+- `demo-app/`: Next.js demo web app used as the test target
+- Playwright E2E tests run in CI
+- An AI failure agent classifies Playwright failures and creates GitHub Issues or PRs
+
+## Runtime + Language
+
+### Node.js 20 (CI baseline)
+
+- **CI**: GitHub Actions should use Node 20
+- **Local**: use Node 20+ to match CI behavior
+
+### TypeScript 5.x
+
+- Use strict TypeScript where applicable
+- Prefer `import type { ... }` for type-only imports
+
+## Demo App (Target Under Test)
+
+### Next.js 14 (App Router)
+
+- Use App Router conventions: `app/`, `page.tsx`, `layout.tsx`, `route.ts`
+- Server Components by default; only use `'use client'` for interactivity/state
+- Use `next/image` for images when relevant
+- Use Next.js Metadata API for SEO where applicable
+
+### Tailwind CSS
+
+- Use Tailwind utilities for styling (avoid inline styles)
+- Keep UI accessible (labels, aria attributes, keyboard navigation)
+
+### Storage + Auth (demo-only)
+
+- **localStorage** for users/session/tasks
+- **Break Mode** stored in localStorage to force predictable failures
+
+## E2E Testing
+
+### Playwright Test
+
+- Use `@playwright/test`
+- Configure reporters:
+	- JSON reporter to `test-results/results.json`
+	- HTML report to `test-results/html-report`
+- Configure diagnostics:
+	- screenshots only on failure
+	- trace/video on first retry (CI)
+
+### Test Targeting
+
+- Prefer `data-testid` for stable element targeting
+- Break Mode `selector-change` is allowed to rename `data-testid` to simulate locator breakage
+
+## CI/CD
+
+### GitHub Actions
+
+- Workflow runs Playwright, uploads artifacts, then runs the agent on failure
+- Use `continue-on-error: true` on the Playwright step so the agent can run
+- Always upload `test-results/` artifacts
+- Fail the job after the agent runs when tests failed (so checks are red)
+
+### Vercel (Demo App Hosting)
+
+- Deploy `demo-app/` to Vercel free tier
+- Configure `DEMO_APP_URL` in GitHub Secrets for CI runs
+
+## AI Failure Agent
+
+### Anthropic API
+
+- Read API key from `ANTHROPIC_API_KEY` (GitHub Secret)
+- Agent must emit and consume strict JSON for classification results
+- Use a confidence threshold gate before taking write actions (PR/Issue)
+
+### GitHub APIs
+
+- Use `GITHUB_TOKEN` provided by Actions
+- Actions are limited to:
+	- create an Issue for `REAL_BUG`
+	- open a PR for `BROKEN_LOCATOR` (high confidence)
+- Do not auto-merge; PRs require human review
+
+## Repo Conventions
+
+- Prefer `npm ci` in CI for reproducible installs
+- Keep secrets in `.env` / GitHub Secrets / Vercel env vars (never commit secrets)
+- Do not add fallback behavior unless explicitly requested
+

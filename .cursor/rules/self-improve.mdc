@@ -1,0 +1,398 @@
+---
+description: Guidelines for continuously improving Cursor rules based on emerging code patterns and best practices.
+globs: **/*
+alwaysApply: true
+---
+
+## Rule Improvement Triggers
+
+- New code patterns not covered by existing rules
+- Repeated similar implementations across files
+- Common error patterns that could be prevented
+- New libraries or tools being used consistently
+- Emerging best practices in the codebase
+
+# Analysis Process:
+- Compare new code with existing rules
+- Identify patterns that should be standardized
+- Look for references to external documentation
+- Check for consistent error handling patterns
+- Monitor test patterns and coverage
+
+# Rule Updates:
+
+- **Add New Rules When:**
+  - A new technology/pattern is used in 3+ files
+  - Common bugs could be prevented by a rule
+  - Code reviews repeatedly mention the same feedback
+  - New security or performance patterns emerge
+
+- **Modify Existing Rules When:**
+  - Better examples exist in the codebase
+  - Additional edge cases are discovered
+  - Related rules have been updated
+  - Implementation details have changed
+
+- **Example Pattern Recognition:**
+
+  ```typescript
+  // If you see repeated patterns like:
+  const data = await prisma.user.findMany({
+    select: { id: true, email: true },
+    where: { status: 'ACTIVE' }
+  });
+
+  // Consider adding to [prisma.mdc](mdc:shipixen/.cursor/rules/prisma.mdc):
+  // - Standard select fields
+  // - Common where conditions
+  // - Performance optimization patterns
+  ```
+
+- **Rule Quality Checks:**
+- Rules should be actionable and specific
+- Examples should come from actual code
+- References should be up to date
+- Patterns should be consistently enforced
+
+## Continuous Improvement:
+
+- Monitor code review comments
+- Track common development questions
+- Update rules after major refactors
+- Add links to relevant documentation
+- Cross-reference related rules
+
+## Rule Deprecation
+
+- Mark outdated patterns as deprecated
+- Remove rules that no longer apply
+- Update references to deprecated rules
+- Document migration paths for old patterns
+
+## Documentation Updates:
+
+- Keep examples synchronized with code
+- Update references to external docs
+- Maintain links between related rules
+- Document breaking changes
+
+## Problem-Solving Strategy: Avoiding Repeated Failures
+
+### Critical Rule: Never Repeat Failed Solutions
+
+When encountering an issue that has occurred before:
+
+1. **Check Context Window History First**
+   - Always review past solutions within the current conversation context
+   - Identify what approaches were already attempted
+   - Note which solutions failed and why
+
+2. **Two-Strike Rule**
+   - If the same issue reoccurs more than 2 times, **immediately try a different method**
+   - Never repeat the exact same solution that didn't work twice
+   - Consider alternative approaches, libraries, or strategies
+
+3. **Solution Tracking**
+   - Before implementing a fix, check if this exact approach was tried before
+   - If a similar solution failed, analyze why it failed and choose a fundamentally different approach
+   - Document what didn't work to avoid repeating mistakes
+
+4. **Alternative Approaches**
+   - When a solution fails twice, consider:
+     - Different libraries or tools
+     - Alternative architectural patterns
+     - Different error handling strategies
+     - Alternative debugging methods
+     - Different code organization approaches
+
+### Implementation Checklist
+
+Before attempting a fix:
+
+- [ ] Review conversation history for previous attempts
+- [ ] Identify if this issue occurred before
+- [ ] Check if the same solution was already tried
+- [ ] If same solution failed twice, choose a different approach
+- [ ] Document the new approach and why it's different
+
+### Example Pattern
+
+```typescript
+// ❌ Bad: Repeating the same failed approach
+// Attempt 1: Tried using try-catch with retry logic - failed
+// Attempt 2: Tried same try-catch with retry logic again - failed
+// Attempt 3: Still trying same approach - DON'T DO THIS
+
+// ✅ Good: Trying alternative approach after two failures
+// Attempt 1: Tried using try-catch with retry logic - failed
+// Attempt 2: Tried same try-catch with retry logic again - failed
+// Attempt 3: Using event-driven approach with error boundaries instead
+```
+
+### When to Escalate
+
+If multiple different approaches have failed:
+
+- Consider asking the user for more context or clarification
+- Review the problem from first principles
+- Check if the issue might be environmental or configuration-related
+- Verify assumptions about the problem statement
+
+## Development Practices: Fallback Mechanisms
+
+### Critical Rule: Never Add Fallbacks Without User Approval
+
+**⚠️ CRITICAL: Never implement fallback mechanisms, error recovery strategies, or default behaviors without explicit user approval.**
+
+**This rule applies to ALL code changes, including:**
+- Schema migrations
+- Data source fallbacks (e.g., using first image when thumbnailImage is missing)
+- API response handling
+- Component rendering
+- Configuration defaults
+
+### What Constitutes a Fallback
+
+Fallback mechanisms include but are not limited to:
+
+- **Default values when data is missing or invalid** (e.g., `value || defaultValue`)
+- **Alternative data sources when primary source fails** (e.g., `thumbnailImage || images[0]`)
+- **Retry logic for failed operations**
+- **Graceful degradation features**
+- **Default error messages or UI states**
+- **Fallback UI components when content fails to load**
+- **Default configurations or settings**
+- **Alternative rendering strategies**
+- **Polyfills or compatibility layers**
+- **Fallback fonts, images, or assets**
+- **Backward compatibility code** (unless explicitly requested)
+
+### Required Process
+
+Before implementing any fallback mechanism:
+
+1. **Identify the Need**
+   - Recognize when a fallback might be useful
+   - Understand the failure scenario
+
+2. **Ask for Approval**
+   - Explicitly ask the user if they want a fallback mechanism
+   - Describe what the fallback would do
+   - Explain the failure scenario it addresses
+
+3. **Wait for Confirmation**
+   - Do not implement until user explicitly approves
+   - If user says no, handle the error without fallback
+
+### Implementation Pattern
+
+```typescript
+// ❌ Bad: Adding fallback without asking
+const fetchData = async () => {
+  try {
+    return await api.fetch()
+  } catch (error) {
+    // DON'T DO THIS: Adding fallback without user approval
+    return { data: [], message: 'Using default data' }
+  }
+}
+
+// ❌ Bad: Data source fallback without asking
+const projectsWithImageUrls = projectsRaw.map((project) => {
+  // DON'T DO THIS: Using alternative data source without approval
+  const thumbnailImage = project.thumbnailImage || project.images[0]
+  // ...
+})
+
+// ✅ Good: Asking user first
+// "I notice the API call might fail. Would you like me to add a fallback
+// that returns an empty array, or should we handle the error differently?"
+
+// ✅ Good: Asking about data source fallback
+// "I notice thumbnailImage might be missing. Would you like me to add a fallback
+// that uses the first image from the images array, or should projects without
+// thumbnailImage display without an image?"
+
+// ✅ Good: After user approval
+const fetchData = async () => {
+  try {
+    return await api.fetch()
+  } catch (error) {
+    // User approved this fallback
+    logger.warn('API failed, using fallback data')
+    return { data: [], message: 'Using default data' }
+  }
+}
+
+// ✅ Good: No fallback, use only the specified data source
+const projectsWithImageUrls = projectsRaw.map((project) => {
+  // Use only thumbnailImage, no fallback
+  const thumbnailImage = project.thumbnailImage
+  const imageUrl = thumbnailImage ? getImageUrl(thumbnailImage, 800, 800) : null
+  // ...
+})
+
+// ✅ Good: No fallback, proper error handling
+const fetchData = async () => {
+  try {
+    return await api.fetch()
+  } catch (error) {
+    // User declined fallback - handle error properly
+    logger.error('API fetch failed', error)
+    throw new Error('Failed to fetch data')
+  }
+}
+```
+
+### Exception Cases
+
+The only exception is when:
+- The user explicitly requests a fallback mechanism
+- The fallback is part of the original requirements
+- The user asks for "error handling" and you clarify that includes fallbacks
+
+### Checklist
+
+Before adding any fallback code:
+
+- [ ] Identified a potential failure scenario
+- [ ] Asked user if they want a fallback mechanism
+- [ ] Received explicit approval from user
+- [ ] Documented why the fallback exists (user request)
+- [ ] Implemented only after approval
+
+### Related Practices
+
+- Error handling without fallbacks is acceptable (throwing errors, logging, etc.)
+- User-requested features should be implemented as specified
+- Always clarify requirements if unsure about error handling approach
+
+## Logging Practices: Use Logger Instead of Console
+
+### Critical Rule: Never Use console.log, Always Use logger
+
+**Never use `console.log`, `console.error`, `console.warn`, `console.info`, or `console.debug` directly. Always use the project's logger utility instead.**
+
+### Logger Implementation
+
+The project has a centralized logger utility at [src/lib/logger.ts](mdc:src/lib/logger.ts) that provides:
+
+- Environment-based logging (can be disabled via environment variables)
+- Log levels: `info`, `warn`, `error`, `debug`
+- Structured logging with timestamps and component names
+- Server/client-side configuration support
+
+### Required Usage
+
+Always import and use the logger:
+
+```typescript
+// ✅ Good: Using logger
+import { logger } from '@/lib/logger'
+
+logger.info('User logged in', { userId: user.id }, 'Auth')
+logger.warn('API rate limit approaching', { remaining: 10 }, 'API')
+logger.error('Failed to fetch data', error, 'DataFetch')
+logger.debug('Component state updated', { state }, 'Component')
+```
+
+### Forbidden Patterns
+
+```typescript
+// ❌ Bad: Direct console usage
+console.log('User logged in', user)
+console.error('Error occurred', error)
+console.warn('Warning message')
+console.info('Info message')
+console.debug('Debug message')
+
+// ❌ Bad: Using console in any form
+console.table(data)
+console.group('Group')
+console.time('Timer')
+```
+
+### Migration Pattern
+
+When encountering console statements, replace them:
+
+```typescript
+// Before (❌ Bad)
+console.log('[Component] DEBUG - State:', state)
+console.error('API Error:', error)
+console.warn('Deprecated feature used')
+
+// After (✅ Good)
+import { logger } from '@/lib/logger'
+
+logger.debug('State updated', { state }, 'Component')
+logger.error('API Error', error, 'API')
+logger.warn('Deprecated feature used', undefined, 'Component')
+```
+
+### Logger Methods
+
+Use the appropriate logger method for each log level:
+
+- **`logger.info()`** - General information, successful operations
+- **`logger.warn()`** - Warnings, non-critical issues
+- **`logger.error()`** - Errors, exceptions, failures
+- **`logger.debug()`** - Debug information, detailed state
+- **`logger.apiCall()`** - Specialized method for API call logging
+- **`logger.componentRender()`** - Specialized method for component render logging
+
+### Logger Signature
+
+```typescript
+logger.info(message: string, data?: any, component?: string): void
+logger.warn(message: string, data?: any, component?: string): void
+logger.error(message: string, data?: any, component?: string): void
+logger.debug(message: string, data?: any, component?: string): void
+```
+
+### Import Pattern
+
+```typescript
+// ✅ Good: Import logger
+import { logger } from '@/lib/logger'
+
+// ✅ Good: Import specific methods
+import { info, warn, error, debug } from '@/lib/logger'
+
+// ✅ Good: Import with alias if needed
+import { logger as appLogger } from '@/lib/logger'
+```
+
+### Exception Cases
+
+The only exception is:
+- Inside the logger implementation itself ([src/lib/logger.ts](mdc:src/lib/logger.ts)) - the logger internally uses console methods, which is acceptable
+
+### Checklist
+
+Before committing code:
+
+- [ ] No `console.log` statements in code
+- [ ] No `console.error`, `console.warn`, `console.info`, `console.debug` statements
+- [ ] All logging uses `logger` from `@/lib/logger`
+- [ ] Appropriate log level is used (info/warn/error/debug)
+- [ ] Component name is provided when relevant
+- [ ] Structured data is passed as second parameter
+
+### Benefits
+
+Using the logger provides:
+
+- **Centralized control** - Can disable logging via environment variables
+- **Consistent format** - All logs follow the same structure
+- **Production safety** - Logs can be disabled in production
+- **Better debugging** - Component names and structured data
+- **Log level filtering** - Control verbosity via LOG_LEVEL
+
+Follow [cursor-rules.mdc](mdc:.cursor/rules/cursor-rules.mdc) for proper rule formatting and structure.
+
+
+
+
+
+
