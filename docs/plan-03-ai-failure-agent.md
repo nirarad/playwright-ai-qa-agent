@@ -1,8 +1,13 @@
-# Plan: AI Failure Detection & Bug Reporting Agent
+# Plan: AI Failure Detection & Bug Reporting Agent (LLM-Agnostic)
 
 ## What This Builds
 
-A GitHub Actions orchestrator that runs after Playwright tests fail. It reads failure context, calls Claude API to classify the failure, then either opens a PR with an auto-fix or creates a GitHub Issue — with zero external services.
+A GitHub Actions orchestrator that runs after Playwright tests fail. It reads
+failure context, calls a configurable LLM provider to classify the failure,
+then either opens a PR with an auto-fix or creates a GitHub Issue.
+
+Provider/model behavior must be configured in a dedicated agent config file,
+not hardcoded in classifier/healer modules.
 
 ---
 
@@ -14,9 +19,16 @@ qa-ai-agent/
 │   └── workflows/
 │       └── playwright.yml          # CI pipeline (see plan-03)
 ├── agent/
+│   ├── config.ts                   # Single source of truth for agent config
+│   ├── llm/
+│   │   ├── types.ts                # Provider-agnostic LLM interfaces
+│   │   ├── factory.ts              # Build provider client from config
+│   │   ├── anthropic-client.ts     # Optional provider adapter
+│   │   ├── openai-client.ts        # Optional provider adapter
+│   │   └── google-client.ts        # Optional provider adapter
 │   ├── orchestrator.ts             # Main entry point
-│   ├── classifier.ts               # Claude API: classify failure
-│   ├── healer.ts                   # Claude API: generate fix + open PR
+│   ├── classifier.ts               # Provider-agnostic: classify failure
+│   ├── healer.ts                   # Provider-agnostic: generate fix + open PR
 │   ├── reporter.ts                 # GitHub API: create Issue
 │   ├── context.ts                  # Read failure artifacts from disk
 │   └── types.ts                    # Shared types
@@ -26,6 +38,58 @@ qa-ai-agent/
 ├── package.json
 └── tsconfig.json
 ```
+
+---
+
+## Configuration-First Design (`agent/config.ts`)
+
+All runtime behavior must be controlled by a typed config module. This avoids
+provider lock-in and keeps workflow/runtime settings centralized.
+
+Planned config surface:
+
+```typescript
+export interface AgentConfig {
+  llm: {
+    provider: 'anthropic' | 'openai' | 'google'
+    model: string
+    apiKeyEnvVar: string
+    baseUrl?: string
+    maxTokens: {
+      classify: number
+      heal: number
+    }
+    temperature: {
+      classify: number
+      heal: number
+    }
+  }
+  thresholds: {
+    confidence: number
+  }
+  limits: {
+    maxFailuresPerRun: number
+  }
+  actions: {
+    enableHealPr: boolean
+    enableBugIssue: boolean
+  }
+  github: {
+    baseBranch: string
+  }
+  paths: {
+    resultsJson: string
+  }
+}
+```
+
+Configuration sources (precedence):
+
+1. Hard defaults in `config.ts`
+2. Environment overrides (CI/local)
+3. Optional JSON file override (for demo switches)
+
+No provider/model/token values should appear directly in classifier/healer.
 
 ---
 
@@ -118,20 +182,49 @@ export function extractFailures(): FailureContext[] {
 
 ---
 
+## LLM Client Abstraction (`agent/llm/*`)
+
+Introduce a provider-agnostic interface:
+
+```typescript
+export interface LlmClient {
+  classifyFailure(input: {
+    prompt: string
+    maxTokens: number
+    temperature: number
+  }): Promise<string>
+  generateFix(input: {
+    prompt: string
+    maxTokens: number
+    temperature: number
+  }): Promise<string>
+}
+```
+
+Factory behavior:
+
+- Read `config.llm.provider`
+- Instantiate the matching adapter (`anthropic`, `openai`, or `google`)
+- Validate required API key env var from config
+- Throw explicit startup error for unsupported provider values
+
+---
+
 ## Classifier (`agent/classifier.ts`)
 
-Calls Claude API. Returns structured JSON classification.
+Calls the provider-agnostic `LlmClient`. Returns structured JSON classification.
 
 ```typescript
 import { FailureContext, ClassificationResult } from "./types";
-
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY!;
-const ANTHROPIC_MODEL =
-  process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-20250514";
+import { getAgentConfig } from "./config";
+import { getLlmClient } from "./llm/factory";
 
 export async function classifyFailure(
   ctx: FailureContext
 ): Promise<ClassificationResult> {
+  const config = getAgentConfig();
+  const llm = getLlmClient(config);
+
   const prompt = `You are a QA engineer analyzing a Playwright test failure.
 
 Classify this failure into exactly one category:
@@ -157,24 +250,12 @@ ${ctx.errorStack}
 Test source:
 ${ctx.testSource}`;
 
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "x-api-key": ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01",
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      model: ANTHROPIC_MODEL,
-      max_tokens: 500,
-      messages: [{ role: "user", content: prompt }],
-    }),
+  const raw = await llm.classifyFailure({
+    prompt,
+    maxTokens: config.llm.maxTokens.classify,
+    temperature: config.llm.temperature.classify,
   });
-
-  const data = await response.json();
-  const text = data.content[0].text.trim();
-
-  return JSON.parse(text);
+  return JSON.parse(raw);
 }
 ```
 
@@ -182,13 +263,16 @@ ${ctx.testSource}`;
 
 ## Healer (`agent/healer.ts`)
 
-Called only for `BROKEN_LOCATOR` with `confidence >= 0.75`. Gets Claude to rewrite the test file, then opens a PR via GitHub API.
+Called only for `BROKEN_LOCATOR` with confidence above configured threshold.
+Uses the same provider-agnostic `LlmClient` to rewrite the test file, then
+opens a PR via GitHub API.
 
 ```typescript
 import * as fs from "fs";
 import { FailureContext, ClassificationResult } from "./types";
+import { getAgentConfig } from "./config";
+import { getLlmClient } from "./llm/factory";
 
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY!;
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN!;
 const REPO = process.env.GITHUB_REPOSITORY!; // "org/repo"
 
@@ -196,6 +280,9 @@ export async function healAndOpenPR(
   ctx: FailureContext,
   classification: ClassificationResult
 ): Promise<void> {
+  const config = getAgentConfig();
+  const llm = getLlmClient(config);
+
   // Step 1: Generate fix
   const fixPrompt = `You are a Playwright expert. A test has a broken locator. 
 Return ONLY the complete fixed test file content — no explanation, no markdown fences, no preamble.
@@ -208,22 +295,11 @@ Suggested fix direction: ${classification.suggestedFix}
 Current test source:
 ${ctx.testSource}`;
 
-  const fixResponse = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "x-api-key": ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01",
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 2000,
-      messages: [{ role: "user", content: fixPrompt }],
-    }),
+  const fixedSource = await llm.generateFix({
+    prompt: fixPrompt,
+    maxTokens: config.llm.maxTokens.heal,
+    temperature: config.llm.temperature.heal,
   });
-
-  const fixData = await fixResponse.json();
-  const fixedSource = fixData.content[0].text.trim();
 
   // Step 2: Get current file SHA (required by GitHub Contents API)
   const fileRes = await fetch(
@@ -284,7 +360,7 @@ ${ctx.testSource}`;
       title: `fix(tests): auto-heal: ${ctx.testName}`,
       body: `## Auto-Generated Heal PR\n\n**Failure:** ${ctx.error}\n**Reason:** ${classification.reason}\n**Confidence:** ${classification.confidence}\n**CI Run:** ${ctx.runUrl}\n\n> Review before merging — verify the fix is correct.`,
       head: branchName,
-      base: "main",
+      base: config.github.baseBranch,
     }),
   });
 
@@ -370,11 +446,11 @@ import { extractFailures } from "./context";
 import { classifyFailure } from "./classifier";
 import { healAndOpenPR } from "./healer";
 import { createBugIssue } from "./reporter";
-
-const CONFIDENCE_THRESHOLD = 0.75;
+import { getAgentConfig } from "./config";
 
 async function main() {
-  const failures = extractFailures();
+  const config = getAgentConfig();
+  const failures = extractFailures().slice(0, config.limits.maxFailuresPerRun);
 
   if (failures.length === 0) {
     return;
@@ -385,17 +461,21 @@ async function main() {
   for (const failure of failures) {
     const classification = await classifyFailure(failure);
 
-    if (classification.confidence < CONFIDENCE_THRESHOLD) {
+    if (classification.confidence < config.thresholds.confidence) {
       continue;
     }
 
     switch (classification.category) {
       case "BROKEN_LOCATOR":
-        await healAndOpenPR(failure, classification);
+        if (config.actions.enableHealPr) {
+          await healAndOpenPR(failure, classification);
+        }
         break;
 
       case "REAL_BUG":
-        await createBugIssue(failure, classification);
+        if (config.actions.enableBugIssue) {
+          await createBugIssue(failure, classification);
+        }
         break;
 
       case "FLAKY":
@@ -439,7 +519,12 @@ In your Playwright workflow, add this step **after** the test run step:
 - name: Run AI Failure Agent
   if: failure()
   env:
+    # Pick one provider key based on agent config
     ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+    AI_PROVIDER: anthropic
+    AI_MODEL: claude-sonnet-4-20250514
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   run: npm run agent
 ```
@@ -454,7 +539,9 @@ Add these in `Settings > Secrets and variables > Actions`:
 
 | Secret | Value |
 |---|---|
-| `ANTHROPIC_API_KEY` | Your Anthropic API key |
+| `ANTHROPIC_API_KEY` | Anthropic API key (if provider is anthropic) |
+| `OPENAI_API_KEY` | OpenAI API key (if provider is openai) |
+| `GOOGLE_API_KEY` | Google API key (if provider is google) |
 | `GITHUB_TOKEN` | Auto-provided by GitHub Actions — no action needed |
 
 ---
@@ -478,21 +565,30 @@ use: {
 
 ## Cost Management
 
-Each failure triggers 1–2 Claude API calls (~1,500–3,000 tokens total).  
-At Sonnet pricing this is negligible for a demo project.  
-The `CONFIDENCE_THRESHOLD = 0.75` guard prevents low-confidence actions from firing.
+Each failure triggers 1–2 LLM calls (~1,500–3,000 tokens total depending on
+prompt size/model). Configure limits and model choice in `agent/config.ts`.
 
-To further limit costs during development, add this to `orchestrator.ts`:
+Use config gates to control spend:
+
+- `thresholds.confidence`
+- `limits.maxFailuresPerRun`
+- lower-cost model selection per provider
+- disabling heal PR action in early rollout
+
+To further limit costs during development, set:
 
 ```typescript
-// Limit to first 3 failures per run during development
-const failures = extractFailures().slice(0, 3);
+limits: {
+  maxFailuresPerRun: 3,
+}
 ```
 
 ---
 
 ## What This Does NOT Handle (Known Limitations)
 
-- Page Object Model files: the healer only reads and rewrites the failing test file. If your locators live in a POM, extend `context.ts` to also read imported POM files and include them in the Claude prompt.
+- Page Object Model files: the healer only reads and rewrites the failing
+  test file. If locators live in a POM, extend `context.ts` to also read
+  imported POM files and include them in the LLM prompt.
 - Screenshot attachment to GitHub Issues: GitHub Issues API does not accept binary uploads. To attach screenshots, upload to a GitHub Gist first, then embed the URL in the issue body.
 - The healer does not re-run tests after the fix to verify correctness. This is intentional — always require human PR review before merging.
