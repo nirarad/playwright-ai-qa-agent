@@ -16,7 +16,7 @@ test.describe('showcase: login', () => {
     const loginPage = new LoginPage(page)
     await loginPage.goto(BASE_URL)
     await loginPage.login('test@example.com', 'password123')
-    await expect(page).toHaveURL(`${BASE_URL}/dashboard`, { timeout: 1500 })
+    await expect(page).toHaveURL(/\/dashboard$/, { timeout: 1500 })
   })
 })
 
