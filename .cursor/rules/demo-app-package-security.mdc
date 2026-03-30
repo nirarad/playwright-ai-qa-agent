@@ -1,0 +1,99 @@
+---
+description: Secure dependency policy for demo-app package.json before install
+globs: demo-app/package.json
+alwaysApply: true
+---
+# Demo App Package Security Rule
+
+Use this rule every time `demo-app/package.json` is created or updated.
+
+## Goal
+
+Keep dependency setup clean and predictable:
+
+1. No known **high/critical** vulnerabilities after install
+2. No deprecated or unnecessary packages
+3. Minimal warnings from install/audit commands
+
+## Required Process (Before Finalizing package.json)
+
+1. Prefer current stable packages from npm (do not invent versions).
+2. Keep dependencies minimal. Add only what the app actually uses.
+3. Separate runtime and tooling:
+   - `dependencies`: only packages needed at runtime
+   - `devDependencies`: TypeScript, lint, Tailwind, PostCSS, types
+4. Use Node 20+ compatibility for all package choices.
+5. Run security checks after any package change:
+   - `npm install`
+   - `npm outdated`
+   - `npm audit --audit-level=high`
+6. If high/critical issues exist, update or replace the package before finalizing.
+7. Commit lockfile changes with package changes so installs are reproducible.
+
+## Demo-App Baseline Packages
+
+When creating a fresh `demo-app/package.json`, start from this shape:
+
+```json
+{
+  "name": "demo-app",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "next": "LATEST_STABLE_NEXT_14",
+    "react": "LATEST_STABLE_REACT_18",
+    "react-dom": "LATEST_STABLE_REACT_18"
+  },
+  "devDependencies": {
+    "typescript": "LATEST_STABLE",
+    "@types/node": "LATEST_STABLE",
+    "@types/react": "LATEST_STABLE",
+    "@types/react-dom": "LATEST_STABLE",
+    "tailwindcss": "LATEST_STABLE",
+    "postcss": "LATEST_STABLE",
+    "autoprefixer": "LATEST_STABLE",
+    "eslint": "LATEST_STABLE_COMPATIBLE",
+    "eslint-config-next": "MATCH_NEXT_VERSION"
+  }
+}
+```
+
+## Good vs Bad
+
+```json
+// ✅ Good: minimal, current, and purpose-separated
+{
+  "dependencies": {
+    "next": "^14.2.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "tailwindcss": "^3.4.14"
+  }
+}
+
+// ❌ Bad: unused runtime deps and stale/deprecated tooling
+{
+  "dependencies": {
+    "left-pad": "^1.3.0",
+    "moment": "^2.29.1"
+  },
+  "devDependencies": {
+    "eslint": "^7.0.0"
+  }
+}
+```
+
+## Enforcement Notes
+
+- If a package is required but introduces unresolved high/critical advisories, document the reason and safer alternative in the related plan doc before keeping it.
+- Do not disable audits or suppress warnings as a workaround.
+- Keep this aligned with [tech-stack.mdc](mdc:.cursor/rules/tech-stack.mdc).
+
