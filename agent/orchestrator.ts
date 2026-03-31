@@ -84,8 +84,19 @@ const main = async (): Promise<void> => {
       classification.category === 'REAL_BUG' ||
       classification.category === 'ENV_ISSUE'
     if (aboveThreshold && reportableCategory && config.actions.enableBugIssue) {
-      await createBugIssue(failure, classification, config)
-      actionsExecuted = 'github-issue'
+      try {
+        await createBugIssue(failure, classification, config)
+        actionsExecuted = 'github-issue'
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        logger.error('Issue creation failed', {
+          testName: failure.testName,
+          testFile: failure.testFile,
+          category: classification.category,
+          error: message,
+          phase: 'phase-3',
+        })
+      }
     }
 
     if (
@@ -93,11 +104,22 @@ const main = async (): Promise<void> => {
       classification.category === 'BROKEN_LOCATOR' &&
       config.actions.enableHealPr
     ) {
-      await healAndOpenPr(failure, classification)
-      actionsExecuted =
-        actionsExecuted === 'github-issue'
-          ? 'github-issue+healer-pr'
-          : 'healer-pr'
+      try {
+        await healAndOpenPr(failure, classification)
+        actionsExecuted =
+          actionsExecuted === 'github-issue'
+            ? 'github-issue+healer-pr'
+            : 'healer-pr'
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        logger.error('Healer skipped for failure', {
+          testName: failure.testName,
+          testFile: failure.testFile,
+          category: classification.category,
+          error: message,
+          phase: 'phase-3',
+        })
+      }
     }
 
     const classificationLog = {
