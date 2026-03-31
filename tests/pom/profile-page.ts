@@ -22,4 +22,3 @@ export class ProfilePage extends BasePage {
     await this.saveButton.click()
   }
 }
-
