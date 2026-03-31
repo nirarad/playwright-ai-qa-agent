@@ -98,11 +98,19 @@ const buildFingerprint = (
   ctx: FailureContext,
   classification: ClassificationResult,
 ): string => {
+  const locatorKey =
+    classification.category === 'BROKEN_LOCATOR'
+      ? sanitizeForMarkdownCodeBlock(
+          extractLocatorFromError(ctx) ?? 'locator-unavailable',
+        ).toLowerCase()
+      : ''
+
   const payload = [
     ctx.commit,
     ctx.testFile,
     ctx.testName,
     classification.category,
+    locatorKey,
   ].join('\n')
   return createHash('sha256').update(payload, 'utf8').digest('hex')
 }
@@ -181,7 +189,11 @@ const truncateIssueTitle = (title: string, maxLen: number): string => {
   return `${title.slice(0, maxLen - 3)}...`
 }
 
-const REPORT_ISSUE_CATEGORIES = ['REAL_BUG', 'ENV_ISSUE'] as const satisfies readonly FailureCategory[]
+const REPORT_ISSUE_CATEGORIES = [
+  'BROKEN_LOCATOR',
+  'REAL_BUG',
+  'ENV_ISSUE',
+] as const satisfies readonly FailureCategory[]
 
 type ReportIssueCategory = (typeof REPORT_ISSUE_CATEGORIES)[number]
 
@@ -191,6 +203,12 @@ const isReportIssueCategory = (c: FailureCategory): c is ReportIssueCategory =>
 const issuePresentation = (
   category: ReportIssueCategory,
 ): { heading: string; titlePrefix: string } => {
+  if (category === 'BROKEN_LOCATOR') {
+    return {
+      heading: '## Automated Automation Issue Report',
+      titlePrefix: '[AUTOMATION_BUG]',
+    }
+  }
   if (category === 'ENV_ISSUE') {
     return {
       heading: '## Automated Environment Issue Report',
@@ -201,6 +219,37 @@ const issuePresentation = (
     heading: '## Automated Bug Report',
     titlePrefix: '[BUG]',
   }
+}
+
+const extractLocatorFromError = (ctx: FailureContext): string | null => {
+  const combined = `${ctx.error}\n${ctx.errorStack}\n${ctx.playwrightErrorMessages ?? ''}`
+  const locatorLine = combined.match(/Locator:\s*([^\n\r]+)/i)
+  if (locatorLine && locatorLine[1]) {
+    return locatorLine[1].trim()
+  }
+  const waitingFor = combined.match(/waiting for\s+([^\n\r]+)/i)
+  if (waitingFor && waitingFor[1]) {
+    return waitingFor[1].trim()
+  }
+  return null
+}
+
+const buildLocatorUpdateSection = (
+  ctx: FailureContext,
+  classification: ClassificationResult,
+): string => {
+  if (classification.category !== 'BROKEN_LOCATOR') {
+    return ''
+  }
+
+  const locatorHint = extractLocatorFromError(ctx) ?? 'Locator not extracted from failure output.'
+  const suggestedFix = classification.suggestedFix ?? 'No selector update suggestion was provided.'
+
+  return `## Locator Update Needed
+**Locator to update:** \`${sanitizeForMarkdownCodeBlock(locatorHint)}\`
+
+**Suggested update direction:** ${sanitizeForMarkdownCodeBlock(suggestedFix)}
+`
 }
 
 export const createBugIssue = async (
@@ -249,6 +298,10 @@ export const createBugIssue = async (
       testFile: ctx.testFile,
       testName: ctx.testName,
       category: classification.category,
+      locator:
+        classification.category === 'BROKEN_LOCATOR'
+          ? extractLocatorFromError(ctx) ?? 'locator-unavailable'
+          : undefined,
     })
     return
   }
@@ -273,6 +326,8 @@ ${sanitizeForMarkdownCodeBlock(ctx.errorStack)}
 \`\`\`
 
 ${buildScreenshotSection(ctx)}
+
+${buildLocatorUpdateSection(ctx, classification)}
 
 ## Classification
 | Field | Value |

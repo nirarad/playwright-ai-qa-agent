@@ -220,6 +220,14 @@ Create/update `agent/healer.ts`:
 	- Create branch from `config.github.baseBranch`
 	- Update file content using Contents API
 	- Open PR (base is `config.github.baseBranch`)
+	- Link PR to the matching `AUTOMATION_BUG` issue using `Closes #<issue-number>`
+
+Issue linkage requirements:
+
+- For each `BROKEN_LOCATOR`, resolve a matching open `AUTOMATION_BUG` issue
+  (same test + commit + category fingerprint), or create one if none exists.
+- Include the issue number in healer PR body with `Closes #<issue-number>`.
+- Keep duplicate prevention for both issues and PRs.
 
 Safety:
 
@@ -356,6 +364,8 @@ Before enabling agent actions in GitHub Actions, enforce these guardrails.
 	- Log only redacted config (provider/model/thresholds, no keys).
 - **Idempotency / duplicate prevention**:
 	- Prevent duplicate issues for same failing test + commit + category.
+	- For `BROKEN_LOCATOR`, key duplicate prevention per extracted locator
+	  (same test can open separate issues for different broken locators).
 	- Prevent opening multiple heal PRs for the same test/commit in one run.
 - **Failure behavior**:
 	- Agent internal errors should not erase Playwright artifacts.

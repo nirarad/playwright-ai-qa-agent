@@ -79,6 +79,7 @@ const main = async (): Promise<void> => {
 
     let actionsExecuted: 'github-issue' | 'none' = 'none'
     const reportableCategory =
+      classification.category === 'BROKEN_LOCATOR' ||
       classification.category === 'REAL_BUG' ||
       classification.category === 'ENV_ISSUE'
     if (aboveThreshold && reportableCategory && config.actions.enableBugIssue) {

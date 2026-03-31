@@ -31,6 +31,7 @@ Phase 2 (Reporting First):
 Phase 3 (Healing After Reporter):
 
 - PR healer for `BROKEN_LOCATOR` (`agent/healer.ts`)
+- Link healer PRs to the corresponding `AUTOMATION_BUG` issue
 - Orchestrator: enable heal PRs only after reporting is stable
 
 Rationale:
@@ -394,6 +395,14 @@ Called only for `BROKEN_LOCATOR` with confidence above configured threshold.
 Uses the same provider-agnostic `LlmClient` to rewrite the test file, then
 opens a PR via GitHub API.
 
+`BROKEN_LOCATOR` should create an `AUTOMATION_BUG` issue first (or reuse an
+open matching one), then the PR body must link it using:
+
+- `Closes #<issue-number>`
+
+This keeps automation defects auditable and ensures the issue auto-closes when
+the healer PR is merged.
+
 ```typescript
 import * as fs from "fs";
 import { FailureContext, ClassificationResult } from "./types";
@@ -476,7 +485,13 @@ ${ctx.testSource}`;
     }
   );
 
-  // Step 5: Open PR
+  // Step 5: Resolve/create AUTOMATION_BUG issue for linkage
+  const automationIssueNumber = await findOrCreateAutomationBugIssue(
+    ctx,
+    classification
+  );
+
+  // Step 6: Open PR
   await fetch(`https://api.github.com/repos/${REPO}/pulls`, {
     method: "POST",
     headers: {
@@ -485,7 +500,7 @@ ${ctx.testSource}`;
     },
     body: JSON.stringify({
       title: `fix(tests): auto-heal: ${ctx.testName}`,
-      body: `## Auto-Generated Heal PR\n\n**Failure:** ${ctx.error}\n**Reason:** ${classification.reason}\n**Confidence:** ${classification.confidence}\n**CI Run:** ${ctx.runUrl}\n\n> Review before merging — verify the fix is correct.`,
+      body: `## Auto-Generated Heal PR\n\n**Failure:** ${ctx.error}\n**Reason:** ${classification.reason}\n**Confidence:** ${classification.confidence}\n**CI Run:** ${ctx.runUrl}\n\nCloses #${automationIssueNumber}\n\n> Review before merging — verify the fix is correct.`,
       head: branchName,
       base: config.github.baseBranch,
     }),
