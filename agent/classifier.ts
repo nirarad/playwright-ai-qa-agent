@@ -44,6 +44,52 @@ const buildFallbackIssueTitle = (
   return `${testShort}: ${summary}`.replace(/\u2014/g, ':')
 }
 
+const extractLocatorSignal = (ctx: FailureContext): string | null => {
+  const combined = `${ctx.error}\n${ctx.errorStack}\n${ctx.playwrightErrorMessages ?? ''}`
+  const locatorLine = combined.match(/Locator:\s*([^\n\r]+)/i)
+  if (locatorLine?.[1]) {
+    return locatorLine[1].trim()
+  }
+  const waitingFor = combined.match(/waiting for\s+([^\n\r]+)/i)
+  if (waitingFor?.[1]) {
+    return waitingFor[1].trim()
+  }
+  return null
+}
+
+const extractLocatorToken = (value: string): string | null => {
+  const quoted = value.match(/['"]([^'"]+)['"]/)
+  if (quoted?.[1]) {
+    return quoted[1].trim()
+  }
+  const idLike = value.match(/[A-Za-z_$][A-Za-z0-9_$]*/)
+  return idLike?.[0] ?? null
+}
+
+const buildBrokenLocatorIssueTitle = (
+  ctx: FailureContext,
+  llmIssueTitle: string | null | undefined,
+  suggestedFix: string | null | undefined,
+): string => {
+  const locatorSignal = extractLocatorSignal(ctx) ?? ''
+  const fromError = extractLocatorToken(locatorSignal)
+  const fromFix = extractLocatorToken(suggestedFix ?? '')
+  const locator = fromFix ?? fromError
+  const testNamePart = ctx.testName.replace(/\s+/g, ' ').trim()
+  const source = (llmIssueTitle ?? '').replace(/\u2014/g, ':').trim()
+  if (source && locator && source.toLowerCase().includes(locator.toLowerCase())) {
+    return source
+  }
+  if (locator) {
+    const raw = `${testNamePart}: broken locator '${locator}'`
+    return raw.length <= 70 ? raw : `${raw.slice(0, 67)}...`
+  }
+  if (source) {
+    return source
+  }
+  return buildFallbackIssueTitle(ctx, 'BROKEN_LOCATOR')
+}
+
 const isFailureCategory = (value: unknown): value is FailureCategory => {
   return (
     value === 'BROKEN_LOCATOR' ||
@@ -363,12 +409,27 @@ export const classifyFailure = async (ctx: FailureContext): Promise<Classificati
         category: 'BROKEN_LOCATOR',
         confidence: RULE_BASED_BROKEN_LOCATOR_CONFIDENCE,
         reason: parsed.reason,
-        issueTitle: buildFallbackIssueTitle(ctx, 'BROKEN_LOCATOR'),
+        issueTitle: buildBrokenLocatorIssueTitle(
+          ctx,
+          parsed.issueTitle,
+          parsed.suggestedFix,
+        ),
         suggestedFix: parsed.suggestedFix,
       }
     }
 
-    return parsed
+    if (parsed.category !== 'BROKEN_LOCATOR') {
+      return parsed
+    }
+
+    return {
+      ...parsed,
+      issueTitle: buildBrokenLocatorIssueTitle(
+        ctx,
+        parsed.issueTitle,
+        parsed.suggestedFix,
+      ),
+    }
   } catch (error) {
     if (!locatorRuleExplanationOnly) {
       throw error
@@ -384,7 +445,11 @@ export const classifyFailure = async (ctx: FailureContext): Promise<Classificati
       category: 'BROKEN_LOCATOR',
       confidence: RULE_BASED_BROKEN_LOCATOR_CONFIDENCE,
       reason: RULE_BROKEN_LOCATOR_FALLBACK_REASON,
-      issueTitle: buildFallbackIssueTitle(ctx, 'BROKEN_LOCATOR'),
+      issueTitle: buildBrokenLocatorIssueTitle(
+        ctx,
+        null,
+        RULE_BROKEN_LOCATOR_FALLBACK_SUGGESTED_FIX,
+      ),
       suggestedFix: RULE_BROKEN_LOCATOR_FALLBACK_SUGGESTED_FIX,
     }
   }

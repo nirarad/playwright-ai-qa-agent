@@ -38,6 +38,11 @@ interface HealerFixResponse {
   newLocator?: string
 }
 
+interface IdentifierRename {
+  from: string
+  to: string
+}
+
 const getGitHubApiBase = (): string => {
   const raw = process.env.GITHUB_API_URL
   if (!raw || raw.trim() === '') {
@@ -201,6 +206,203 @@ const similarityScore = (before: string, after: string): number => {
     }
   }
   return shared / Math.max(beforeSet.size, 1)
+}
+
+const extractTestId = (value: string): string | null => {
+  const match = value.match(/['"]([^'"]+)['"]/)
+  if (match?.[1]) {
+    return match[1].trim()
+  }
+  const plainToken = value.match(/[A-Za-z0-9_-]{3,}/)
+  return plainToken?.[0] ?? null
+}
+
+const extractIdentifier = (value: string): string | null => {
+  const clean = value.trim()
+  if (/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(clean)) {
+    return clean
+  }
+  return null
+}
+
+const inferIdentifierRename = (
+  originalLocator: string | undefined,
+  newLocator: string | undefined,
+): IdentifierRename | null => {
+  const from = extractIdentifier(originalLocator ?? '')
+  const to = extractIdentifier(newLocator ?? '')
+  if (!from || !to || from === to) {
+    return null
+  }
+  return { from, to }
+}
+
+const extractUsedCalls = (source: string): Set<string> => {
+  const matches = Array.from(source.matchAll(/\.([A-Za-z_$][A-Za-z0-9_$]*)\s*\(/g))
+  return new Set(matches.map((match) => match[1]))
+}
+
+const suggestCompatibleCall = (
+  unsupportedCall: string,
+  allowedCalls: Set<string>,
+): string | null => {
+  if (allowedCalls.has(unsupportedCall)) {
+    return unsupportedCall
+  }
+  if (unsupportedCall.startsWith('get') && unsupportedCall.length > 3) {
+    const candidate = `${unsupportedCall[3].toLowerCase()}${unsupportedCall.slice(4)}`
+    if (allowedCalls.has(candidate)) {
+      return candidate
+    }
+  }
+  const lowerUnsupported = unsupportedCall.toLowerCase()
+  const suffixMatch = Array.from(allowedCalls).find(
+    (call) =>
+      call.toLowerCase().endsWith(lowerUnsupported) ||
+      lowerUnsupported.endsWith(call.toLowerCase()),
+  )
+  return suffixMatch ?? null
+}
+
+const normalizeUnsupportedApiCalls = (before: string, after: string): string => {
+  const beforeCalls = extractUsedCalls(before)
+  const afterCalls = extractUsedCalls(after)
+  const unsupported = Array.from(afterCalls).filter((call) => !beforeCalls.has(call))
+  if (unsupported.length === 0) {
+    return after
+  }
+
+  let normalized = after
+  for (const call of unsupported) {
+    const replacement = suggestCompatibleCall(call, beforeCalls)
+    if (!replacement || replacement === call) {
+      continue
+    }
+    const escapedCall = call.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    normalized = normalized.replace(
+      new RegExp(`\\.${escapedCall}\\s*\\(`, 'g'),
+      `.${replacement}(`,
+    )
+  }
+  return normalized
+}
+
+const assertNoUnsupportedApiCalls = (before: string, after: string): void => {
+  const beforeCalls = extractUsedCalls(before)
+  const afterCalls = extractUsedCalls(after)
+  for (const call of afterCalls) {
+    if (!beforeCalls.has(call)) {
+      throw new Error(
+        `Healer introduced unsupported call ".${call}()" not present in target file`,
+      )
+    }
+  }
+}
+
+const assertNoAddedComments = (before: string, after: string): void => {
+  const beforeLines = new Set(before.split(/\r?\n/))
+  const addedLines = after
+    .split(/\r?\n/)
+    .filter((line) => !beforeLines.has(line))
+    .map((line) => line.trim())
+  const hasAddedComment = addedLines.some(
+    (line) => line.startsWith('//') || line.includes('//'),
+  )
+  if (hasAddedComment) {
+    throw new Error('Healer added inline comments, which are not allowed')
+  }
+}
+
+const buildHealerPrTitle = (input: {
+  ctx: FailureContext
+  targetFile: string
+  locatorFrom: string
+  locatorTo: string
+}): string => {
+  const targetName =
+    input.targetFile.split('/').pop()?.replace(/\.ts$/, '') ?? input.targetFile
+  const fromTestId = extractTestId(input.locatorFrom)
+  const toTestId = extractTestId(input.locatorTo)
+  const locatorSummary =
+    fromTestId && toTestId
+      ? `${fromTestId}->${toTestId}`
+      : fromTestId
+        ? `locator ${fromTestId}`
+        : toTestId
+          ? `locator ${toTestId}`
+          : `locator ${input.ctx.testName}`
+  const raw = `fix(tests): ${targetName} ${locatorSummary}`
+  return raw.length <= 120 ? raw : `${raw.slice(0, 117)}...`
+}
+
+const extractTestIdValuesFromSource = (source: string): string[] => {
+  const matches = Array.from(source.matchAll(/byTestId\(\s*['"]([^'"]+)['"]\s*\)/g))
+  return matches
+    .map((match) => match[1]?.trim())
+    .filter((value): value is string => Boolean(value))
+}
+
+const inferLocatorDeltaFromSource = (
+  before: string,
+  after: string,
+  fallback: { original: string; proposed: string },
+): { original: string; proposed: string } => {
+  const beforeIds = extractTestIdValuesFromSource(before)
+  const afterIds = extractTestIdValuesFromSource(after)
+  const removed = beforeIds.find((id) => !afterIds.includes(id))
+  const added = afterIds.find((id) => !beforeIds.includes(id))
+  if (removed && added) {
+    return {
+      original: removed,
+      proposed: added,
+    }
+  }
+  return fallback
+}
+
+const escapeRegex = (value: string): string => {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+const applyDeterministicLocatorReplace = (
+  source: string,
+  originalLocator: string,
+  proposedLocator: string,
+): string => {
+  const original = originalLocator.trim()
+  const proposed = proposedLocator.trim()
+  if (!original || !proposed || original === proposed) {
+    return source
+  }
+
+  const candidates = [original]
+  const originalTestId = extractTestId(original)
+  const proposedTestId = extractTestId(proposed)
+  if (originalTestId && proposedTestId && originalTestId !== proposedTestId) {
+    candidates.push(`'${originalTestId}'`)
+    candidates.push(`"${originalTestId}"`)
+  }
+
+  let updated = source
+  for (const candidate of candidates) {
+    if (!updated.includes(candidate)) {
+      continue
+    }
+    if (candidate === `'${originalTestId}'` || candidate === `"${originalTestId}"`) {
+      const quote = candidate[0]
+      const replacement = `${quote}${proposedTestId ?? originalTestId}${quote}`
+      updated = updated.replace(
+        new RegExp(escapeRegex(candidate), 'g'),
+        replacement,
+      )
+    } else {
+      updated = updated.replace(
+        new RegExp(escapeRegex(candidate), 'g'),
+        proposed,
+      )
+    }
+  }
+  return updated
 }
 
 const normalizePath = (value: string): string => value.replace(/\\/g, '/')
@@ -449,6 +651,8 @@ Rules:
 - Keep all unrelated code unchanged.
 - Do not delete tests/imports/helpers unrelated to the broken locator.
 - If the locator belongs in a page object, update that page object file instead of the spec.
+- Use only helper methods/APIs already present in the selected target file. Do not invent new method names.
+- Do not add comments.
 - Output in this exact tagged format (no extra prose):
 TARGET_FILE: <one allowed target file>
 ORIGINAL_LOCATOR: <locator before change>
@@ -481,12 +685,70 @@ ${candidateSources}`
   if (!selectedFile) {
     throw new Error(`Selected target file metadata missing for ${fix.targetFile}`)
   }
-  const score = similarityScore(selectedFile.source, fix.updatedSource)
+  const supportedCalls = Array.from(extractUsedCalls(selectedFile.source)).sort()
+
+  const refinePrompt = `You produced an update for ${fix.targetFile}. Rewrite it so it only uses methods already present in that file.
+
+Allowed method calls in ${fix.targetFile}:
+${supportedCalls.map((call) => `- ${call}`).join('\n')}
+
+Strict rules:
+- Do not introduce any method call not listed above.
+- Keep behavior the same as your intended locator fix.
+- Do not add comments.
+- Return only the full corrected source code for ${fix.targetFile}.`
+
+  const refinedGenerated = await llm.generateFix({
+    prompt:
+      `${refinePrompt}\n\nCurrent candidate source:\n${fix.updatedSource}`,
+    maxTokens: config.llm.maxTokens.heal,
+    temperature: config.llm.temperature.heal,
+  })
+
+  const refinedSource = trimCodeFences(refinedGenerated) || fix.updatedSource
+  const score = similarityScore(selectedFile.source, refinedSource)
   if (score < 0.65) {
     throw new Error(
       `Healer generated overly broad rewrite for ${fix.targetFile} (similarity=${score.toFixed(2)}). Aborting unsafe commit.`,
     )
   }
+  const rename = inferIdentifierRename(fix.originalLocator, fix.newLocator)
+  const identifierNormalizedSource =
+    rename !== null
+      ? refinedSource.replace(
+          new RegExp(`\\b${rename.to}\\b`, 'g'),
+          rename.from,
+        )
+      : refinedSource
+  const callNormalizedSource = normalizeUnsupportedApiCalls(
+    selectedFile.source,
+    identifierNormalizedSource,
+  )
+  assertNoUnsupportedApiCalls(selectedFile.source, callNormalizedSource)
+  const modelLocatorFallback = {
+    original: fix.originalLocator ?? locatorChange.original,
+    proposed: fix.newLocator ?? locatorChange.proposed,
+  }
+  const sourceWithDeterministicFallback =
+    callNormalizedSource === selectedFile.source
+      ? applyDeterministicLocatorReplace(
+          selectedFile.source,
+          modelLocatorFallback.original,
+          modelLocatorFallback.proposed,
+        )
+      : callNormalizedSource
+  assertNoUnsupportedApiCalls(selectedFile.source, sourceWithDeterministicFallback)
+  assertNoAddedComments(selectedFile.source, sourceWithDeterministicFallback)
+  if (sourceWithDeterministicFallback === selectedFile.source) {
+    throw new Error(
+      `Healer produced no effective code change for ${fix.targetFile}; refusing to open PR`,
+    )
+  }
+  const effectiveLocatorChange = inferLocatorDeltaFromSource(
+    selectedFile.source,
+    sourceWithDeterministicFallback,
+    modelLocatorFallback,
+  )
 
   const issue = await ensureIssueForFailure(ctx, classification, config)
 
@@ -518,7 +780,7 @@ ${candidateSources}`
       },
       body: JSON.stringify({
         message: `fix(tests): auto-heal broken locator in "${ctx.testName}"`,
-        content: Buffer.from(fix.updatedSource, 'utf8').toString('base64'),
+        content: Buffer.from(sourceWithDeterministicFallback, 'utf8').toString('base64'),
         sha: selectedFile.sha,
         branch: branchName,
       }),
@@ -537,7 +799,12 @@ ${candidateSources}`
       'content-type': 'application/json',
     },
     body: JSON.stringify({
-      title: `fix(tests): auto-heal broken locator: ${ctx.testName}`,
+      title: buildHealerPrTitle({
+        ctx,
+        targetFile: fix.targetFile,
+        locatorFrom: effectiveLocatorChange.original,
+        locatorTo: effectiveLocatorChange.proposed,
+      }),
       body:
         `## Auto-Generated Heal PR\n\n` +
         `**Failure:** ${sanitizeForMarkdown(ctx.error)}\n` +
@@ -545,8 +812,8 @@ ${candidateSources}`
         `**Confidence:** ${classification.confidence}\n` +
         `**CI Run:** ${ctx.runUrl}\n` +
         `**Target file updated:** ${fix.targetFile}\n` +
-        `**Original locator:** ${sanitizeForMarkdown(fix.originalLocator ?? locatorChange.original)}\n` +
-        `**Proposed locator:** ${sanitizeForMarkdown(fix.newLocator ?? locatorChange.proposed)}\n` +
+        `**Original locator:** ${sanitizeForMarkdown(effectiveLocatorChange.original)}\n` +
+        `**Proposed locator:** ${sanitizeForMarkdown(effectiveLocatorChange.proposed)}\n` +
         `**Linked issue:** #${issue.number}\n\n` +
         `Closes #${issue.number}\n\n` +
         `> Review before merging — verify locator updates are correct.`,
