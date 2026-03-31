@@ -192,6 +192,22 @@ const inferLocatorChange = (
   }
 }
 
+const parseStrictSuggestedFixPair = (
+  suggestedFix: string | null | undefined,
+): { original: string; proposed: string } | null => {
+  if (!suggestedFix) {
+    return null
+  }
+  const pair = suggestedFix.match(/['"]([^'"]+)['"]\s+to\s+['"]([^'"]+)['"]/i)
+  if (!pair?.[1] || !pair?.[2]) {
+    return null
+  }
+  return {
+    original: pair[1].trim(),
+    proposed: pair[2].trim(),
+  }
+}
+
 const similarityScore = (before: string, after: string): number => {
   const beforeLines = before.split(/\r?\n/)
   const afterLines = after.split(/\r?\n/)
@@ -358,6 +374,71 @@ const inferLocatorDeltaFromSource = (
     }
   }
   return fallback
+}
+
+const countBy = (values: string[]): Map<string, number> => {
+  const map = new Map<string, number>()
+  for (const value of values) {
+    map.set(value, (map.get(value) ?? 0) + 1)
+  }
+  return map
+}
+
+const expandDelta = (
+  beforeMap: Map<string, number>,
+  afterMap: Map<string, number>,
+): { removed: string[]; added: string[] } => {
+  const removed: string[] = []
+  const added: string[] = []
+  const allKeys = new Set<string>([
+    ...Array.from(beforeMap.keys()),
+    ...Array.from(afterMap.keys()),
+  ])
+  for (const key of allKeys) {
+    const beforeCount = beforeMap.get(key) ?? 0
+    const afterCount = afterMap.get(key) ?? 0
+    if (beforeCount > afterCount) {
+      const diff = beforeCount - afterCount
+      for (let i = 0; i < diff; i += 1) {
+        removed.push(key)
+      }
+    } else if (afterCount > beforeCount) {
+      const diff = afterCount - beforeCount
+      for (let i = 0; i < diff; i += 1) {
+        added.push(key)
+      }
+    }
+  }
+  return { removed, added }
+}
+
+const assertOnlyTargetLocatorChanged = (
+  before: string,
+  after: string,
+  targetLocatorTestId: string | null,
+): void => {
+  if (!targetLocatorTestId) {
+    return
+  }
+  const beforeIds = extractTestIdValuesFromSource(before)
+  const afterIds = extractTestIdValuesFromSource(after)
+  const { removed, added } = expandDelta(countBy(beforeIds), countBy(afterIds))
+  if (removed.length === 0 && added.length === 0) {
+    return
+  }
+
+  const uniqueRemoved = Array.from(new Set(removed))
+  const wrongRemoved = uniqueRemoved.filter((id) => id !== targetLocatorTestId)
+  if (wrongRemoved.length > 0) {
+    throw new Error(
+      `Healer changed unsupported locator(s): ${wrongRemoved.join(', ')}. Expected only ${targetLocatorTestId}`,
+    )
+  }
+  if (!removed.includes(targetLocatorTestId)) {
+    throw new Error(
+      `Healer did not change required locator ${targetLocatorTestId}; refusing unrelated fix`,
+    )
+  }
 }
 
 const escapeRegex = (value: string): string => {
@@ -580,6 +661,11 @@ export const healAndOpenPr = async (
   const { owner, repo } = parseRepository(repoFull)
   const apiBase = getGitHubApiBase()
   const locatorChange = inferLocatorChange(ctx, classification)
+  const strictPairFromSuggestion = parseStrictSuggestedFixPair(
+    classification.suggestedFix,
+  )
+  const issueLocatorSignal = extractLocatorFromError(ctx) ?? locatorChange.original
+  const lockedTargetTestId = extractTestId(issueLocatorSignal)
 
   const baseRefRes = await fetch(
     `${apiBase}/repos/${owner}/${repo}/git/ref/heads/${config.github.baseBranch}`,
@@ -643,6 +729,7 @@ Failing test metadata:
 - suggested fix direction: ${classification.suggestedFix ?? 'none'}
 - original locator signal: ${locatorChange.original}
 - target locator hint: ${locatorChange.proposed}
+- locked issue locator (must be the one you edit): ${issueLocatorSignal}
 
 Allowed target files (pick exactly one):
 ${Array.from(allowedTargets).map((file) => `- ${file}`).join('\n')}
@@ -651,6 +738,7 @@ Rules:
 - Keep all unrelated code unchanged.
 - Do not delete tests/imports/helpers unrelated to the broken locator.
 - If the locator belongs in a page object, update that page object file instead of the spec.
+- Change only the locked issue locator. Do not modify any other locator.
 - Use only helper methods/APIs already present in the selected target file. Do not invent new method names.
 - Do not add comments.
 - Output in this exact tagged format (no extra prose):
@@ -724,21 +812,37 @@ Strict rules:
     selectedFile.source,
     identifierNormalizedSource,
   )
-  assertNoUnsupportedApiCalls(selectedFile.source, callNormalizedSource)
   const modelLocatorFallback = {
-    original: fix.originalLocator ?? locatorChange.original,
-    proposed: fix.newLocator ?? locatorChange.proposed,
+    original: issueLocatorSignal,
+    proposed:
+      strictPairFromSuggestion?.proposed ??
+      fix.newLocator ??
+      locatorChange.proposed,
   }
-  const sourceWithDeterministicFallback =
-    callNormalizedSource === selectedFile.source
-      ? applyDeterministicLocatorReplace(
-          selectedFile.source,
-          modelLocatorFallback.original,
-          modelLocatorFallback.proposed,
-        )
-      : callNormalizedSource
+  let sourceWithDeterministicFallback = callNormalizedSource
+  try {
+    assertNoUnsupportedApiCalls(selectedFile.source, sourceWithDeterministicFallback)
+  } catch {
+    sourceWithDeterministicFallback = applyDeterministicLocatorReplace(
+      selectedFile.source,
+      modelLocatorFallback.original,
+      modelLocatorFallback.proposed,
+    )
+  }
+  if (sourceWithDeterministicFallback === selectedFile.source) {
+    sourceWithDeterministicFallback = applyDeterministicLocatorReplace(
+      selectedFile.source,
+      modelLocatorFallback.original,
+      modelLocatorFallback.proposed,
+    )
+  }
   assertNoUnsupportedApiCalls(selectedFile.source, sourceWithDeterministicFallback)
   assertNoAddedComments(selectedFile.source, sourceWithDeterministicFallback)
+  assertOnlyTargetLocatorChanged(
+    selectedFile.source,
+    sourceWithDeterministicFallback,
+    lockedTargetTestId,
+  )
   if (sourceWithDeterministicFallback === selectedFile.source) {
     throw new Error(
       `Healer produced no effective code change for ${fix.targetFile}; refusing to open PR`,

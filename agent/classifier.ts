@@ -66,6 +66,110 @@ const extractLocatorToken = (value: string): string | null => {
   return idLike?.[0] ?? null
 }
 
+const extractDomTestIds = (
+  domSnapshot: string | undefined,
+): Array<{ tag: string; testId: string }> => {
+  if (!domSnapshot) {
+    return []
+  }
+  const matches = Array.from(
+    domSnapshot.matchAll(
+      /<([a-zA-Z0-9-]+)[^>]*\sdata-testid=(?:"([^"]+)"|'([^']+)')[^>]*>/g,
+    ),
+  )
+  return matches
+    .map((match) => ({
+      tag: (match[1] ?? '').toLowerCase(),
+      testId: (match[2] ?? match[3] ?? '').trim(),
+    }))
+    .filter((entry) => entry.tag.length > 0 && entry.testId.length > 0)
+}
+
+const stripVersionSuffix = (value: string): string => {
+  return value.replace(/-v\d+$/i, '')
+}
+
+const inferLocatorOperation = (ctx: FailureContext): 'fill' | 'click' | 'check' | 'other' => {
+  const text =
+    `${ctx.error}\n${ctx.errorStack}\n${ctx.playwrightErrorMessages ?? ''}`.toLowerCase()
+  if (text.includes('locator.fill')) {
+    return 'fill'
+  }
+  if (text.includes('locator.click')) {
+    return 'click'
+  }
+  if (text.includes('locator.check')) {
+    return 'check'
+  }
+  return 'other'
+}
+
+const inferExpectedTag = (ctx: FailureContext): string | null => {
+  const operation = inferLocatorOperation(ctx)
+  if (operation === 'fill') {
+    return 'input'
+  }
+  if (operation === 'check') {
+    return 'input'
+  }
+  if (operation === 'click') {
+    return 'button'
+  }
+  return null
+}
+
+const pickStrictLocatorReplacement = (
+  ctx: FailureContext,
+  originalLocator: string | null,
+): { original: string; proposed: string; tag: string | null } | null => {
+  if (!originalLocator) {
+    return null
+  }
+  const domTestIds = extractDomTestIds(ctx.domSnapshot)
+  const expectedTag = inferExpectedTag(ctx)
+  const normalizedOriginal = stripVersionSuffix(originalLocator)
+  const candidates = domTestIds.filter((entry) => {
+    if (entry.testId === originalLocator) {
+      return false
+    }
+    if (stripVersionSuffix(entry.testId) !== normalizedOriginal) {
+      return false
+    }
+    if (expectedTag && entry.tag !== expectedTag) {
+      return false
+    }
+    return true
+  })
+  if (candidates.length === 0) {
+    return null
+  }
+  const best = candidates[0]
+  return {
+    original: originalLocator,
+    proposed: best.testId,
+    tag: best.tag,
+  }
+}
+
+const buildStrictBrokenLocatorSuggestion = (
+  ctx: FailureContext,
+  llmSuggestedFix: string | null | undefined,
+): string => {
+  const locatorSignal = extractLocatorSignal(ctx) ?? ''
+  const originalLocator = extractLocatorToken(locatorSignal)
+  const strict = pickStrictLocatorReplacement(ctx, originalLocator)
+  if (strict) {
+    return `Update only data-testid '${strict.original}' to '${strict.proposed}' (element: ${strict.tag ?? 'unknown'}). Do not modify any other locator.`
+  }
+  if (originalLocator) {
+    return `Update only locator '${originalLocator}' to the current DOM value for the same element type. Do not modify any other locator.`
+  }
+  if (llmSuggestedFix && llmSuggestedFix.trim() !== '') {
+    return llmSuggestedFix
+  }
+  return RULE_BROKEN_LOCATOR_FALLBACK_SUGGESTED_FIX
+}
+
 const buildBrokenLocatorIssueTitle = (
   ctx: FailureContext,
   llmIssueTitle: string | null | undefined,
@@ -295,6 +399,11 @@ Respond with valid JSON only:
   "suggestedFix": "string or null"
 }
 
+For BROKEN_LOCATOR specifically:
+- suggestedFix must target exactly one locator.
+- Use this format when possible: Update only data-testid '<old>' to '<new>' (element: <input|button|label|link|other>). Do not modify any other locator.
+- Never suggest multiple locator options in one suggestedFix.
+
 Test name: ${ctxForLlm.testName}
 Test file: ${ctxForLlm.testFile}
 Error: ${ctxForLlm.error}
@@ -405,6 +514,10 @@ export const classifyFailure = async (ctx: FailureContext): Promise<Classificati
     const parsed = await parseClassificationWithRepair(llm, config, raw)
 
     if (locatorRuleExplanationOnly) {
+      const strictSuggestedFix = buildStrictBrokenLocatorSuggestion(
+        ctx,
+        parsed.suggestedFix,
+      )
       return {
         category: 'BROKEN_LOCATOR',
         confidence: RULE_BASED_BROKEN_LOCATOR_CONFIDENCE,
@@ -412,9 +525,9 @@ export const classifyFailure = async (ctx: FailureContext): Promise<Classificati
         issueTitle: buildBrokenLocatorIssueTitle(
           ctx,
           parsed.issueTitle,
-          parsed.suggestedFix,
+          strictSuggestedFix,
         ),
-        suggestedFix: parsed.suggestedFix,
+        suggestedFix: strictSuggestedFix,
       }
     }
 
@@ -422,13 +535,19 @@ export const classifyFailure = async (ctx: FailureContext): Promise<Classificati
       return parsed
     }
 
+    const strictSuggestedFix = buildStrictBrokenLocatorSuggestion(
+      ctx,
+      parsed.suggestedFix,
+    )
+
     return {
       ...parsed,
       issueTitle: buildBrokenLocatorIssueTitle(
         ctx,
         parsed.issueTitle,
-        parsed.suggestedFix,
+        strictSuggestedFix,
       ),
+      suggestedFix: strictSuggestedFix,
     }
   } catch (error) {
     if (!locatorRuleExplanationOnly) {
@@ -441,16 +560,21 @@ export const classifyFailure = async (ctx: FailureContext): Promise<Classificati
       error: message,
     })
 
+    const strictFallbackSuggestion = buildStrictBrokenLocatorSuggestion(
+      ctx,
+      RULE_BROKEN_LOCATOR_FALLBACK_SUGGESTED_FIX,
+    )
+
     return {
       category: 'BROKEN_LOCATOR',
       confidence: RULE_BASED_BROKEN_LOCATOR_CONFIDENCE,
       reason: RULE_BROKEN_LOCATOR_FALLBACK_REASON,
+      suggestedFix: strictFallbackSuggestion,
       issueTitle: buildBrokenLocatorIssueTitle(
         ctx,
         null,
-        RULE_BROKEN_LOCATOR_FALLBACK_SUGGESTED_FIX,
+        strictFallbackSuggestion,
       ),
-      suggestedFix: RULE_BROKEN_LOCATOR_FALLBACK_SUGGESTED_FIX,
     }
   }
 }
