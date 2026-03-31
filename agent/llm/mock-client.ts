@@ -92,4 +92,24 @@ export class MockClient implements LlmClient {
     })
     return JSON.stringify(result)
   }
+
+  async generateFix(input: {
+    prompt: string
+    maxTokens: number
+    temperature: number
+  }): Promise<string> {
+    void input.maxTokens
+    void input.temperature
+
+    const sourceMatch = input.prompt.match(/Current test source:\s*([\s\S]*)$/)
+    const source = sourceMatch?.[1]?.trim()
+    if (!source) {
+      throw new Error('Mock generateFix could not extract test source from prompt')
+    }
+
+    logger.debug('Mock generateFix returned source passthrough', {
+      sourceChars: source.length,
+    })
+    return source
+  }
 }

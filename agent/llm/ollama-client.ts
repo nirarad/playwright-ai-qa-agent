@@ -160,5 +160,68 @@ export class OllamaClient implements LlmClient {
     }
     return content
   }
+
+  async generateFix(input: {
+    prompt: string
+    maxTokens: number
+    temperature: number
+  }): Promise<string> {
+    const timeoutMs = parseOllamaRequestTimeoutMs()
+    const perf = getAgentConfig().ollama
+    const numCtx = computeOllamaNumCtx(
+      input.prompt.length,
+      input.maxTokens,
+      perf.numCtxMin,
+      perf.numCtxMax,
+    )
+
+    logger.debug('Ollama generateFix request started', {
+      model: this.model,
+      baseUrl: this.baseUrl,
+      maxTokens: input.maxTokens,
+      numCtx,
+      temperature: input.temperature,
+      promptChars: input.prompt.length,
+      requestTimeoutMs: timeoutMs || 'none',
+    })
+
+    const data = await withProviderRetry('ollama', async () => {
+      return runWithOptionalHeartbeat(input.prompt.length, async () => {
+        const init: RequestInit = {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: this.model,
+            prompt: input.prompt,
+            stream: false,
+            options: {
+              temperature: input.temperature,
+              num_predict: input.maxTokens,
+              num_ctx: numCtx,
+            },
+          }),
+        }
+        if (timeoutMs > 0) {
+          init.signal = AbortSignal.timeout(timeoutMs)
+        }
+
+        const response = await fetch(`${this.baseUrl}/api/generate`, init)
+        if (!response.ok) {
+          const text = await response.text()
+          throw new Error(`Ollama generateFix request failed: ${response.status} ${text}`)
+        }
+        logger.debug('Ollama generateFix request succeeded', { status: response.status })
+        return (await response.json()) as OllamaResponse
+      })
+    })
+
+    const content = data.response?.trim()
+    if (!content) {
+      throw new Error('Ollama generateFix response missing generated text')
+    }
+    return content
+  }
 }
 

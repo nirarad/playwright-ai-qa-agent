@@ -4,6 +4,7 @@ import { extractFailures } from './context.js'
 import { loadEnvForAgent } from './env.js'
 import { logger } from './logger.js'
 import { createBugIssue } from './reporter.js'
+import { healAndOpenPr } from './healer.js'
 
 const sleep = async (durationMs: number): Promise<void> => {
   if (durationMs <= 0) {
@@ -52,7 +53,7 @@ const main = async (): Promise<void> => {
 
   logger.info('Processing failed tests', {
     failures: failures.length,
-    phase: 'phase-2',
+    phase: 'phase-3',
   })
 
   for (const [index, failure] of failures.entries()) {
@@ -64,7 +65,7 @@ const main = async (): Promise<void> => {
       logger.warn('Classification error', {
         testName: failure.testName,
         error: message,
-        phase: 'phase-2',
+        phase: 'phase-3',
       })
       const isLastFailure = index === failures.length - 1
       if (!isLastFailure) {
@@ -77,7 +78,7 @@ const main = async (): Promise<void> => {
       classification.confidence >= config.thresholds.confidence
     const decision = aboveThreshold ? 'ABOVE_THRESHOLD' : 'BELOW_THRESHOLD'
 
-    let actionsExecuted: 'github-issue' | 'none' = 'none'
+    let actionsExecuted: 'github-issue' | 'healer-pr' | 'github-issue+healer-pr' | 'none' = 'none'
     const reportableCategory =
       classification.category === 'BROKEN_LOCATOR' ||
       classification.category === 'REAL_BUG' ||
@@ -87,16 +88,43 @@ const main = async (): Promise<void> => {
       actionsExecuted = 'github-issue'
     }
 
-    logger.info('Failure classified', {
+    if (
+      aboveThreshold &&
+      classification.category === 'BROKEN_LOCATOR' &&
+      config.actions.enableHealPr
+    ) {
+      await healAndOpenPr(failure, classification)
+      actionsExecuted =
+        actionsExecuted === 'github-issue'
+          ? 'github-issue+healer-pr'
+          : 'healer-pr'
+    }
+
+    const classificationLog = {
       testName: failure.testName,
       testFile: failure.testFile,
       category: classification.category,
       confidence: classification.confidence,
       decision,
       reason: classification.reason,
-      phase: 'phase-2',
+      phase: 'phase-3',
       actionsExecuted,
-    })
+      enableHealPr: config.actions.enableHealPr,
+    }
+
+    if (
+      aboveThreshold &&
+      classification.category === 'BROKEN_LOCATOR' &&
+      !config.actions.enableHealPr
+    ) {
+      logger.error('Broken locator detected but healer is disabled', classificationLog)
+    }
+
+    if (aboveThreshold) {
+      logger.error('Failure classified', classificationLog)
+    } else {
+      logger.info('Failure classified', classificationLog)
+    }
 
     const isLastFailure = index === failures.length - 1
     if (!isLastFailure) {

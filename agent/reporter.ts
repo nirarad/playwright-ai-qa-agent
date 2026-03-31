@@ -119,9 +119,16 @@ const fingerprintMarker = (fingerprint: string): string =>
   `\n\n<!-- qa-agent-fp:${fingerprint} -->\n`
 
 interface GitHubIssueListItem {
+  number?: number
   html_url?: string
   body?: string | null
   pull_request?: unknown
+}
+
+interface IssueResolutionResult {
+  number: number
+  url: string
+  created: boolean
 }
 
 const readErrorMessage = async (res: Response): Promise<string> => {
@@ -144,7 +151,7 @@ const findOpenDuplicateIssue = async (input: {
   token: string
   fingerprint: string
   labelForQuery: string
-}): Promise<string | null> => {
+}): Promise<{ number: number; url: string } | null> => {
   const url = new URL(
     `${input.apiBase}/repos/${input.owner}/${input.repo}/issues`,
   )
@@ -173,7 +180,10 @@ const findOpenDuplicateIssue = async (input: {
       continue
     }
     if (typeof item.body === 'string' && item.body.includes(needle)) {
-      return typeof item.html_url === 'string' ? item.html_url : 'unknown'
+      if (typeof item.number === 'number' && typeof item.html_url === 'string') {
+        return { number: item.number, url: item.html_url }
+      }
+      return null
     }
   }
   return null
@@ -252,11 +262,11 @@ const buildLocatorUpdateSection = (
 `
 }
 
-export const createBugIssue = async (
+export const ensureIssueForFailure = async (
   ctx: FailureContext,
   classification: ClassificationResult,
   config: AgentConfig,
-): Promise<void> => {
+): Promise<IssueResolutionResult> => {
   if (!isReportIssueCategory(classification.category)) {
     throw new Error(
       `createBugIssue only supports ${REPORT_ISSUE_CATEGORIES.join(', ')}; got ${classification.category}`,
@@ -283,7 +293,7 @@ export const createBugIssue = async (
     config.github.issueLabels[0] ??
     'automated-qa'
 
-  const duplicateUrl = await findOpenDuplicateIssue({
+  const duplicate = await findOpenDuplicateIssue({
     apiBase,
     owner,
     repo,
@@ -292,9 +302,10 @@ export const createBugIssue = async (
     labelForQuery,
   })
 
-  if (duplicateUrl) {
+  if (duplicate) {
     logger.info('GitHub issue skipped: open duplicate exists', {
-      duplicateUrl,
+      duplicateUrl: duplicate.url,
+      issueNumber: duplicate.number,
       testFile: ctx.testFile,
       testName: ctx.testName,
       category: classification.category,
@@ -303,7 +314,11 @@ export const createBugIssue = async (
           ? extractLocatorFromError(ctx) ?? 'locator-unavailable'
           : undefined,
     })
-    return
+    return {
+      number: duplicate.number,
+      url: duplicate.url,
+      created: false,
+    }
   }
 
   const body = `${presentation.heading}
@@ -365,23 +380,37 @@ ${buildLocatorUpdateSection(ctx, classification)}
     }),
   })
 
-  const data = (await res.json()) as { html_url?: string; message?: string }
+  const data = (await res.json()) as { number?: number; html_url?: string; message?: string }
 
   if (!res.ok) {
     const message = data.message ?? (await readErrorMessage(res))
     throw new Error(`GitHub issue create failed (${res.status}): ${message}`)
   }
 
-  if (typeof data.html_url === 'string') {
+  if (typeof data.number === 'number' && typeof data.html_url === 'string') {
     logger.info('GitHub issue created', {
+      issueNumber: data.number,
       htmlUrl: data.html_url,
       category: classification.category,
     })
-    return
+    return {
+      number: data.number,
+      url: data.html_url,
+      created: true,
+    }
   }
 
   logger.warn('GitHub issue response missing html_url', {
     status: res.status,
     category: classification.category,
   })
+  throw new Error('GitHub issue create response missing required number/html_url')
+}
+
+export const createBugIssue = async (
+  ctx: FailureContext,
+  classification: ClassificationResult,
+  config: AgentConfig,
+): Promise<void> => {
+  await ensureIssueForFailure(ctx, classification, config)
 }

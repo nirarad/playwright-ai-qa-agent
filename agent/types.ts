@@ -51,9 +51,11 @@ export interface AgentConfig {
     apiKeyEnvVar: string
     maxTokens: {
       classify: number
+      heal: number
     }
     temperature: {
       classify: number
+      heal: number
     }
     retry: {
       maxAttempts: number

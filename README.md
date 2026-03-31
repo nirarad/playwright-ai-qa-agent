@@ -8,7 +8,7 @@ AI-powered QA pipeline: Playwright tests + an LLM-driven failure agent that clas
 
 ## What This Is
 
-When an end-to-end test fails, teams lose time deciding whether the problem is a broken locator, a real regression, flaky timing, or a CI/environment issue. This repository turns that decision into a repeatable pipeline step. GitHub Actions runs Playwright and preserves artifacts. The local/dev agent reads failure context from `test-results/results.json` and classifies failures using a configurable provider.
+When an end-to-end test fails, teams lose time deciding whether the problem is a broken locator, a real regression, flaky timing, or a CI/environment issue. This project turns that decision into a repeatable pipeline step. GitHub Actions runs Playwright and preserves artifacts. The local/dev agent reads failure context from `test-results/results.json` and classifies failures using a configurable provider.
 
 ## Architecture Diagram
 
@@ -28,7 +28,7 @@ Run Playwright tests (JSON + HTML reports, screenshots/traces)
        v
    Claude API classifies failure
        |
-  +--> BROKEN_LOCATOR  ---> create GitHub Issue (`AUTOMATION_BUG`) with locator update guidance
+  +--> BROKEN_LOCATOR  ---> create `AUTOMATION_BUG` Issue (+ optional linked healer PR)
        |
        +--> REAL_BUG        ---> create GitHub Issue with failure context
        |
@@ -69,7 +69,7 @@ Run Playwright tests (JSON + HTML reports, screenshots/traces)
 
 | Category         | What triggers it                                                                                                | Automated action taken                                                      |
 | ---------------- | --------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| `BROKEN_LOCATOR` | Element not found, selector mismatch, `data-testid` changed, or DOM shape changed so locators no longer resolve | Create GitHub Issue titled `AUTOMATION_BUG` with locator update details (confidence-gated) |
+| `BROKEN_LOCATOR` | Element not found, selector mismatch, `data-testid` changed, or DOM shape changed so locators no longer resolve | Create `AUTOMATION_BUG` Issue with locator update details; if healer is enabled, also open a linked PR (`Closes #issue`) |
 | `REAL_BUG`       | Assertions fail due to application logic regression (auth/task/profile flows do not behave as expected)         | Create GitHub Issue with full failure context (confidence-gated)            |
 | `FLAKY`          | Timing/race conditions, intermittent delays, or order-dependent behavior                                        | Log only                                                                    |
 | `ENV_ISSUE`      | CI/environment configuration problems, missing env vars, or external connectivity-like failures                 | Log only                                                                    |
@@ -90,7 +90,7 @@ TaskFlow is a deliberately small task manager with auth and a few core flows tha
 
 | Break Mode        | What it simulates                                                                                 | Expected agent response |
 | ----------------- | ------------------------------------------------------------------------------------------------- | ----------------------- |
-| `selector-change` | Internal app `data-testid` changes (tasks/profile) that break locators while login remains stable | `BROKEN_LOCATOR` → Issue (`AUTOMATION_BUG`)   |
+| `selector-change` | Internal app `data-testid` changes (tasks/profile) that break locators while login remains stable | `BROKEN_LOCATOR` → `AUTOMATION_BUG` Issue (+ healer PR when enabled)   |
 | `logic-bug`       | App logic bug (task creation behavior is wrong)                                                   | `REAL_BUG` → Issue      |
 | `slow-network`    | Artificial latency that makes tests timing-sensitive                                              | `FLAKY` → log only      |
 | `auth-break`      | Login always fails regardless of credentials                                                      | `REAL_BUG` → Issue      |
@@ -289,20 +289,28 @@ npm run test:e2e:slow-network
 ### Agent and CI (general)
 
 
-| Variable                       | Required           | Description                                                                                                              |
-| ------------------------------ | ------------------ | ------------------------------------------------------------------------------------------------------------------------ |
-| `AGENT_RESULTS_JSON_PATH`      | No                 | Path to Playwright JSON results file (default: `test-results/results.json`)                                              |
-| `AGENT_CONFIDENCE_THRESHOLD`   | No                 | Minimum confidence gate for downstream decisions (default: `0.75`)                                                       |
-| `AGENT_MAX_FAILURES_PER_RUN`   | No                 | Maximum failures to process per run (default: `3`)                                                                       |
-| `AGENT_ENABLE_IN_CI`           | No                 | Enable agent execution in CI (default: `false` for Phase 1 dev mode)                                                     |
-| `DEMO_APP_URL`                 | Yes (CI)           | Public URL of the deployed TaskFlow app used by Playwright in GitHub Actions                                             |
-| `BASE_URL`                     | No                 | Override target URL for local runs; defaults to `http://localhost:3000` in the Playwright config                         |
-| `QA_MODE`                      | No                 | Optional mode for showcase test runs (`none`, `selector-change`, `logic-bug`, `auth-break`, `slow-network`)              |
-| `GITHUB_TOKEN`                 | Yes (CI, provided) | Provided automatically by GitHub Actions for Issues/PRs                                                                  |
-| `GITHUB_REPOSITORY`            | Yes (CI, provided) | `owner/repo` used for GitHub API calls                                                                                   |
-| `GITHUB_RUN_ID`                | Yes (CI, provided) | Used to construct the CI run URL for linking in Issues/PRs                                                               |
-| `GITHUB_REF_NAME`              | Yes (CI, provided) | Branch name used in issue context                                                                                        |
-| `GITHUB_SHA`                   | Yes (CI, provided) | Commit SHA used in issue context                                                                                         |
+| Variable | Required | Default | Description |
+| --- | --- | --- | --- |
+| `AGENT_RESULTS_JSON_PATH` | No | `test-results/results.json` | Path to Playwright JSON results file |
+| `AGENT_CONFIDENCE_THRESHOLD` | No | `0.75` | Minimum confidence gate for downstream decisions |
+| `AGENT_MAX_FAILURES_PER_RUN` | No | `3` | Maximum failures to process per run |
+| `AGENT_ENABLE_IN_CI` | No | `false` | Enable agent execution in CI (Phase 1 default is disabled) |
+| `AGENT_ENABLE_BUG_ISSUE` | No | `false` | Enable GitHub Issue creation when confidence is above threshold |
+| `AGENT_ENABLE_HEAL_PR` | No | `false` | Enable healer PR creation for `BROKEN_LOCATOR` when confidence is above threshold |
+| `AGENT_ISSUE_LABELS` | No | `bug,automated-qa` | Comma-separated labels applied to created issues |
+| `AGENT_GITHUB_BASE_BRANCH` | No | `main` | Base branch for healer PRs |
+| `AGENT_INTER_REQUEST_DELAY_MS` | No | `750` | Delay between processing failures |
+| `AGENT_LOG_LEVEL` | No | `info` | Log level: `debug`, `info`, `warn`, `error` |
+| `AGENT_LOG_PRETTY` | No | `false` | Pretty-print logs with multiline context |
+| `GITHUB_API_URL` | No | `https://api.github.com` | GitHub API base URL override (useful for GHES) |
+| `DEMO_APP_URL` | Yes (CI) | n/a | Public URL of the deployed TaskFlow app used by Playwright in GitHub Actions |
+| `BASE_URL` | No | `http://localhost:3000` | Override target URL for local runs |
+| `QA_MODE` | No | `none` | Optional mode for showcase test runs (`none`, `selector-change`, `logic-bug`, `auth-break`, `slow-network`) |
+| `GITHUB_TOKEN` | Yes (CI, provided) | provided by Actions | Used for Issues/PRs GitHub API calls |
+| `GITHUB_REPOSITORY` | Yes (CI, provided) | provided by Actions | `owner/repo` used for GitHub API calls |
+| `GITHUB_RUN_ID` | Yes (CI, provided) | provided by Actions | Used to construct the CI run URL for linking in Issues/PRs |
+| `GITHUB_REF_NAME` | Yes (CI, provided) | provided by Actions | Branch name used in issue context |
+| `GITHUB_SHA` | Yes (CI, provided) | provided by Actions | Commit SHA used in issue context |
 
 
 ### LLM routing (all providers)
@@ -312,6 +320,13 @@ npm run test:e2e:slow-network
 | ------------- | -------- | --------------------------------------------------------------------------------------- |
 | `AI_PROVIDER` | No       | Provider selection: `mock`, `anthropic`, `openai`, `google`, `ollama` (default: `mock`) |
 | `AI_MODEL`    | No       | Model name passed to the selected provider                                              |
+| `AGENT_MAX_TOKENS_CLASSIFY` | No | Token budget for classification calls (default: `600`) |
+| `AGENT_TEMPERATURE_CLASSIFY` | No | Temperature for classification calls (default: `0`) |
+| `AGENT_MAX_TOKENS_HEAL` | No | Token budget for healer generation calls (default: `14000`) |
+| `AGENT_TEMPERATURE_HEAL` | No | Temperature for healer generation calls (default: `0`) |
+| `AGENT_LLM_MAX_ATTEMPTS` | No | LLM request retry attempts (default: `3`) |
+| `AGENT_LLM_RETRY_INITIAL_DELAY_MS` | No | Initial retry delay (default: `1000`) |
+| `AGENT_LLM_RETRY_MAX_DELAY_MS` | No | Max retry delay cap (default: `8000`) |
 
 
 ### Anthropic (Claude)
@@ -328,6 +343,7 @@ npm run test:e2e:slow-network
 | Variable         | Required      | Description                        |
 | ---------------- | ------------- | ---------------------------------- |
 | `OPENAI_API_KEY` | Conditionally | Required when `AI_PROVIDER=openai` |
+| `OPENAI_BASE_URL` | Optional | Override OpenAI API base URL (default: `https://api.openai.com/v1`) |
 
 
 ### Google
@@ -336,6 +352,7 @@ npm run test:e2e:slow-network
 | Variable         | Required      | Description                        |
 | ---------------- | ------------- | ---------------------------------- |
 | `GOOGLE_API_KEY` | Conditionally | Required when `AI_PROVIDER=google` |
+| `GOOGLE_BASE_URL` | Optional | Override Google API base URL (default: `https://generativelanguage.googleapis.com/v1beta/models`) |
 
 
 ### Ollama (local)
@@ -360,7 +377,7 @@ npm run test:e2e:slow-network
 2. Click “Run workflow” and choose a `qa_mode` value (for example `selector-change` to force internal locator failures in tasks/profile flows).
 3. Watch the Playwright step fail while still uploading the HTML report and JSON results artifact.
 4. Confirm the agent step runs after the failure and posts its classification in logs.
-5. For `BROKEN_LOCATOR`, expect a GitHub Issue titled with `AUTOMATION_BUG` and locator update guidance; for `REAL_BUG`, expect a GitHub Issue created with the error and CI run link.
+5. For `BROKEN_LOCATOR`, expect a GitHub Issue titled with `AUTOMATION_BUG` and locator update guidance; when healer is enabled, also expect a linked PR that includes `Closes #<issue-number>`. For `REAL_BUG`, expect a GitHub Issue created with the error and CI run link.
 6. Open the workflow run artifacts and view `test-results/html-report` to show the failure evidence alongside the agent output.
 
 Note: in Phase 1, agent execution is intentionally dev-focused and disabled in CI by default (`AGENT_ENABLE_IN_CI=false`).

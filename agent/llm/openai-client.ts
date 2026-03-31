@@ -70,4 +70,52 @@ export class OpenAiClient implements LlmClient {
     }
     return content
   }
+
+  async generateFix(input: {
+    prompt: string
+    maxTokens: number
+    temperature: number
+  }): Promise<string> {
+    logger.debug('OpenAI generateFix request started', {
+      model: this.model,
+      baseUrl: this.baseUrl,
+      maxTokens: input.maxTokens,
+      temperature: input.temperature,
+      promptChars: input.prompt.length,
+    })
+
+    const data = await withProviderRetry('openai', async () => {
+      const response = await fetch(`${this.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: this.model,
+          temperature: input.temperature,
+          max_tokens: input.maxTokens,
+          messages: [
+            {
+              role: 'user',
+              content: input.prompt,
+            },
+          ],
+        }),
+      })
+
+      if (!response.ok) {
+        const text = await response.text()
+        throw new Error(`OpenAI generateFix request failed: ${response.status} ${text}`)
+      }
+
+      logger.debug('OpenAI generateFix request succeeded', { status: response.status })
+      return (await response.json()) as OpenAiResponse
+    })
+    const content = data.choices?.[0]?.message?.content?.trim()
+    if (!content) {
+      throw new Error('OpenAI generateFix response missing message content')
+    }
+    return content
+  }
 }

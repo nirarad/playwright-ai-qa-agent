@@ -129,9 +129,11 @@ export const getAgentConfig = (): AgentConfig => {
       apiKeyEnvVar: getApiKeyEnvVar(providerRaw),
       maxTokens: {
         classify: parseNumber(process.env.AGENT_MAX_TOKENS_CLASSIFY, 600),
+        heal: parseNumber(process.env.AGENT_MAX_TOKENS_HEAL, 14000),
       },
       temperature: {
         classify: parseNumber(process.env.AGENT_TEMPERATURE_CLASSIFY, 0),
+        heal: parseNumber(process.env.AGENT_TEMPERATURE_HEAL, 0),
       },
       retry: {
         maxAttempts: parsePositiveInteger(process.env.AGENT_LLM_MAX_ATTEMPTS, 3),
