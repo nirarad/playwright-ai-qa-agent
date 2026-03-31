@@ -149,6 +149,7 @@ jobs:
           AGENT_ENABLE_BUG_ISSUE: ${{ (((github.event_name == 'workflow_dispatch' && github.event.inputs.enable_agent_reporter == 'true') || (github.event_name != 'workflow_dispatch' && vars.AGENT_ENABLE_BUG_ISSUE == 'true')) && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && 'true' || 'false' }}
           AI_PROVIDER: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.llm_provider != '' && github.event.inputs.llm_provider) || vars.AI_PROVIDER || 'mock' }}
           AI_MODEL: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.llm_provider == 'google' && 'gemini-2.5-flash') || (github.event_name == 'workflow_dispatch' && github.event.inputs.llm_provider == 'anthropic' && 'claude-3-5-sonnet-latest') || (github.event_name == 'workflow_dispatch' && github.event.inputs.llm_provider == 'openai' && 'gpt-4o-mini') || vars.AI_MODEL || 'mock-classifier-v1' }}
+          AGENT_INTER_REQUEST_DELAY_MS: ${{ (((github.event_name == 'workflow_dispatch' && github.event.inputs.llm_provider != '' && github.event.inputs.llm_provider) || vars.AI_PROVIDER || 'mock') == 'google') && '15000' || '750' }}
           AGENT_RESULTS_JSON_PATH: ../test-results/results.json
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
