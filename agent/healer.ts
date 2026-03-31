@@ -486,6 +486,47 @@ const applyDeterministicLocatorReplace = (
   return updated
 }
 
+const fileContainsLocatorToken = (
+  source: string,
+  locatorToken: string | null,
+): boolean => {
+  if (!locatorToken) {
+    return false
+  }
+  return source.includes(`'${locatorToken}'`) || source.includes(`"${locatorToken}"`)
+}
+
+const enforceStrictLocatorMutation = (input: {
+  before: string
+  after: string
+  originalTestId: string | null
+  proposedTestId: string | null
+  targetFile: string
+}): void => {
+  const { before, after, originalTestId, proposedTestId, targetFile } = input
+  if (!originalTestId || !proposedTestId) {
+    return
+  }
+  const beforeHasOriginal = fileContainsLocatorToken(before, originalTestId)
+  const afterHasOriginal = fileContainsLocatorToken(after, originalTestId)
+  const afterHasProposed = fileContainsLocatorToken(after, proposedTestId)
+  if (!beforeHasOriginal) {
+    throw new Error(
+      `Locked locator '${originalTestId}' not found in selected file ${targetFile}`,
+    )
+  }
+  if (afterHasOriginal) {
+    throw new Error(
+      `Healer did not replace locked locator '${originalTestId}' in ${targetFile}`,
+    )
+  }
+  if (!afterHasProposed) {
+    throw new Error(
+      `Healer did not apply proposed locator '${proposedTestId}' in ${targetFile}`,
+    )
+  }
+}
+
 const normalizePath = (value: string): string => value.replace(/\\/g, '/')
 
 const resolveTargetFilePath = async (input: {
@@ -713,6 +754,9 @@ export const healAndOpenPr = async (
     specFile.path,
     ...pomFiles.map((file) => file.path),
   ])
+  const deterministicTargetMatches = [specFile, ...pomFiles].filter((file) =>
+    fileContainsLocatorToken(file.source, lockedTargetTestId),
+  )
 
   const candidateSources = [
     `### ${specFile.path}\n${specFile.source}`,
@@ -767,24 +811,26 @@ ${candidateSources}`
   })
   const fix = parseHealerFixResponse(generated, allowedTargets)
   const selectedFile =
-    fix.targetFile === specFile.path
-      ? specFile
-      : pomFiles.find((file) => file.path === fix.targetFile)
+    deterministicTargetMatches.length === 1
+      ? deterministicTargetMatches[0]
+      : fix.targetFile === specFile.path
+        ? specFile
+        : pomFiles.find((file) => file.path === fix.targetFile)
   if (!selectedFile) {
     throw new Error(`Selected target file metadata missing for ${fix.targetFile}`)
   }
   const supportedCalls = Array.from(extractUsedCalls(selectedFile.source)).sort()
 
-  const refinePrompt = `You produced an update for ${fix.targetFile}. Rewrite it so it only uses methods already present in that file.
+  const refinePrompt = `You produced an update for ${selectedFile.path}. Rewrite it so it only uses methods already present in that file.
 
-Allowed method calls in ${fix.targetFile}:
+Allowed method calls in ${selectedFile.path}:
 ${supportedCalls.map((call) => `- ${call}`).join('\n')}
 
 Strict rules:
 - Do not introduce any method call not listed above.
 - Keep behavior the same as your intended locator fix.
 - Do not add comments.
-- Return only the full corrected source code for ${fix.targetFile}.`
+- Return only the full corrected source code for ${selectedFile.path}.`
 
   const refinedGenerated = await llm.generateFix({
     prompt:
@@ -797,7 +843,7 @@ Strict rules:
   const score = similarityScore(selectedFile.source, refinedSource)
   if (score < 0.65) {
     throw new Error(
-      `Healer generated overly broad rewrite for ${fix.targetFile} (similarity=${score.toFixed(2)}). Aborting unsafe commit.`,
+      `Healer generated overly broad rewrite for ${selectedFile.path} (similarity=${score.toFixed(2)}). Aborting unsafe commit.`,
     )
   }
   const rename = inferIdentifierRename(fix.originalLocator, fix.newLocator)
@@ -845,9 +891,16 @@ Strict rules:
   )
   if (sourceWithDeterministicFallback === selectedFile.source) {
     throw new Error(
-      `Healer produced no effective code change for ${fix.targetFile}; refusing to open PR`,
+      `Healer produced no effective code change for ${selectedFile.path}; refusing to open PR`,
     )
   }
+  enforceStrictLocatorMutation({
+    before: selectedFile.source,
+    after: sourceWithDeterministicFallback,
+    originalTestId: extractTestId(modelLocatorFallback.original),
+    proposedTestId: extractTestId(modelLocatorFallback.proposed),
+    targetFile: selectedFile.path,
+  })
   const effectiveLocatorChange = inferLocatorDeltaFromSource(
     selectedFile.source,
     sourceWithDeterministicFallback,
@@ -875,7 +928,7 @@ Strict rules:
   }
 
   const updateRes = await fetch(
-    `${apiBase}/repos/${owner}/${repo}/contents/${fix.targetFile}`,
+    `${apiBase}/repos/${owner}/${repo}/contents/${selectedFile.path}`,
     {
       method: 'PUT',
       headers: {
@@ -905,7 +958,7 @@ Strict rules:
     body: JSON.stringify({
       title: buildHealerPrTitle({
         ctx,
-        targetFile: fix.targetFile,
+        targetFile: selectedFile.path,
         locatorFrom: effectiveLocatorChange.original,
         locatorTo: effectiveLocatorChange.proposed,
       }),
@@ -915,7 +968,7 @@ Strict rules:
         `**Reason:** ${sanitizeForMarkdown(classification.reason)}\n` +
         `**Confidence:** ${classification.confidence}\n` +
         `**CI Run:** ${ctx.runUrl}\n` +
-        `**Target file updated:** ${fix.targetFile}\n` +
+        `**Target file updated:** ${selectedFile.path}\n` +
         `**Original locator:** ${sanitizeForMarkdown(effectiveLocatorChange.original)}\n` +
         `**Proposed locator:** ${sanitizeForMarkdown(effectiveLocatorChange.proposed)}\n` +
         `**Linked issue:** #${issue.number}\n\n` +
@@ -938,7 +991,7 @@ Strict rules:
     prUrl: prData.html_url,
     linkedIssueNumber: issue.number,
     linkedIssueCreated: issue.created,
-    targetFilePath: fix.targetFile,
+    targetFilePath: selectedFile.path,
   })
 }
 

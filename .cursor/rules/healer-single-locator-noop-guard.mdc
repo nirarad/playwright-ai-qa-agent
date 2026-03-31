@@ -1,0 +1,54 @@
+---
+description: Enforce single-locator healing with no-op prevention
+globs: agent/healer.ts
+alwaysApply: false
+---
+# Healer Single-Locator No-Op Guard
+
+When updating `agent/healer.ts`, preserve these invariants for `BROKEN_LOCATOR` healing:
+
+1. One issue maps to one locator and one PR.
+2. The changed file must actually contain the locked locator before edit.
+3. The final source must remove the old locator token and add the proposed token.
+4. Do not open a PR for no-op or unrelated locator changes.
+
+## Required checks
+
+- Derive a locked locator token from failure context / strict suggestion.
+- Deterministically select target file when only one candidate contains that token.
+- Validate final source using semantic locator mutation checks:
+  - `before` contains old locator test id.
+  - `after` does not contain old locator test id.
+  - `after` contains proposed locator test id.
+- Keep strict API guard: no new unsupported helper methods.
+- Keep strict comment guard: no added inline comments.
+
+## Forbidden outcomes
+
+- Opening a PR where diff does not change the locked locator.
+- Opening a PR where another locator is changed instead.
+- Opening a PR where description says one locator changed but code changed none.
+
+## Good example
+
+```typescript
+if (sourceWithDeterministicFallback === selectedFile.source) {
+  throw new Error('Healer produced no effective code change')
+}
+
+enforceStrictLocatorMutation({
+  before: selectedFile.source,
+  after: sourceWithDeterministicFallback,
+  originalTestId,
+  proposedTestId,
+  targetFile: selectedFile.path,
+})
+```
+
+## Bad example
+
+```typescript
+// ❌ Opens PR based on model text only
+const prBody = `Original locator: ${fix.originalLocator}`
+// ...without verifying locator mutation in final source
+```
