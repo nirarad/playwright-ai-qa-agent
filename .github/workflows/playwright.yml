@@ -17,12 +17,33 @@ on:
           - logic-bug
           - auth-break
           - slow-network
+      enable_agent_reporter:
+        description: 'Enable agent reporter (issue creation path)'
+        required: false
+        default: false
+        type: boolean
+      enable_agent_healer:
+        description: 'Enable agent healer (healing PR path)'
+        required: false
+        default: false
+        type: boolean
+      llm_provider:
+        description: 'LLM provider for this dispatch (empty = repo default)'
+        required: false
+        default: ''
+        type: choice
+        options:
+          - ''
+          - anthropic
+          - openai
+          - google
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
   issues: write
+  pull-requests: write
 
 jobs:
   test-and-analyze:
@@ -61,6 +82,9 @@ jobs:
           echo '' >> "$GITHUB_STEP_SUMMARY"
           echo '- **BASE_URL**: https://playwright-ai-qa-agent.vercel.app/' >> "$GITHUB_STEP_SUMMARY"
           echo '- **QA_MODE**: `${{ github.event.inputs.qa_mode || 'none' }}`' >> "$GITHUB_STEP_SUMMARY"
+          echo '- **Agent reporter (dispatch input)**: `${{ github.event_name == 'workflow_dispatch' && github.event.inputs.enable_agent_reporter || 'n/a' }}`' >> "$GITHUB_STEP_SUMMARY"
+          echo '- **Agent healer (dispatch input)**: `${{ github.event_name == 'workflow_dispatch' && github.event.inputs.enable_agent_healer || 'n/a' }}`' >> "$GITHUB_STEP_SUMMARY"
+          echo '- **LLM provider (dispatch input)**: `${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.llm_provider || '(empty)') || 'n/a' }}`' >> "$GITHUB_STEP_SUMMARY"
           echo '- **Playwright outcome**: `${{ steps.playwright.outcome }}`' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload test artifacts
@@ -117,15 +141,18 @@ jobs:
         if: >
           steps.playwright.outcome == 'failure' &&
           !cancelled()
+        # @Cursor: Never echo API keys or write them to logs.
+        # Keys from workflow_dispatch input are masked and only injected into provider-specific env vars.
         env:
           AGENT_ENABLE_IN_CI: 'true'
-          AGENT_ENABLE_HEAL_PR: 'false'
-          AGENT_ENABLE_BUG_ISSUE: ${{ vars.AGENT_ENABLE_BUG_ISSUE == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && 'true' || 'false' }}
-          AI_PROVIDER: ${{ vars.AI_PROVIDER || 'mock' }}
+          AGENT_ENABLE_HEAL_PR: ${{ (((github.event_name == 'workflow_dispatch' && github.event.inputs.enable_agent_healer == 'true') || (github.event_name != 'workflow_dispatch' && vars.AGENT_ENABLE_HEAL_PR == 'true')) && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && 'true' || 'false' }}
+          AGENT_ENABLE_BUG_ISSUE: ${{ (((github.event_name == 'workflow_dispatch' && github.event.inputs.enable_agent_reporter == 'true') || (github.event_name != 'workflow_dispatch' && vars.AGENT_ENABLE_BUG_ISSUE == 'true')) && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)) && 'true' || 'false' }}
+          AI_PROVIDER: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.llm_provider != '' && github.event.inputs.llm_provider) || vars.AI_PROVIDER || 'mock' }}
           AI_MODEL: ${{ vars.AI_MODEL || 'mock-classifier-v1' }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.llm_provider == 'anthropic' && github.event.inputs.llm_api_key) || secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.llm_provider == 'openai' && github.event.inputs.llm_api_key) || secrets.OPENAI_API_KEY }}
+          GOOGLE_API_KEY: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.llm_provider == 'google' && github.event.inputs.llm_api_key) || secrets.GOOGLE_API_KEY }}
+          OLLAMA_API_KEY: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.llm_provider == 'ollama' && github.event.inputs.llm_api_key) || secrets.OLLAMA_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_API_URL: ${{ github.api_url }}
           GITHUB_SERVER_URL: ${{ github.server_url }}
