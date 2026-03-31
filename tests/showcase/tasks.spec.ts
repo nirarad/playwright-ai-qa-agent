@@ -26,4 +26,3 @@ test.describe('showcase: tasks', () => {
     await expect(page.getByText('Delete this task')).not.toBeVisible({ timeout: 1500 })
   })
 })
-
