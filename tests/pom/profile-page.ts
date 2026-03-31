@@ -9,7 +9,7 @@ export class ProfilePage extends BasePage {
   constructor(page: Page) {
     super(page)
     this.currentDisplayName = this.byTestId('profile-displayname')
-    this.editDisplayNameInput = this.byTestId('displayname-edit-input')
+    this.editDisplayNameInput = this.getByTestId('displayname-edit-input') // Updated here
     this.saveButton = this.byTestId('save-profile-button')
   }
 
@@ -22,4 +22,3 @@ export class ProfilePage extends BasePage {
     await this.saveButton.click()
   }
 }
-
