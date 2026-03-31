@@ -10,7 +10,7 @@ export class DashboardPage extends BasePage {
   constructor(page: Page) {
     super(page)
     this.taskInput = this.byTestId('task-input')
-    this.addTaskButton = this.byTestId('add-task-button')
+    this.addTaskButton = this.byTestId('add-task-button-v2') // Updated locator here
     this.taskItems = this.page.locator("[data-testid^='task-item-']")
     this.deleteButtons = this.page.locator("[data-testid^='task-delete-']")
   }
@@ -20,4 +20,3 @@ export class DashboardPage extends BasePage {
     await this.addTaskButton.click()
   }
 }
-
