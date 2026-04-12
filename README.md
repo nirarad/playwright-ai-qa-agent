@@ -10,6 +10,14 @@ AI-powered QA pipeline: Playwright tests + an LLM-driven failure agent that clas
 
 When an end-to-end test fails, teams lose time deciding whether the problem is a broken locator, a real regression, flaky timing, or a CI/environment issue. This project turns that decision into a repeatable pipeline step. GitHub Actions runs Playwright and preserves artifacts. The local/dev agent reads failure context from `test-results/results.json` and classifies failures using a configurable provider.
 
+## Demo
+
+Headed Playwright run against TaskFlow with slow motion so the flow is easy to follow.
+
+<video src="videos/playwright-demo.mp4" controls playsinline width="100%"></video>
+
+[Open video file](videos/playwright-demo.mp4)
+
 ## Architecture Diagram
 
 ```text
