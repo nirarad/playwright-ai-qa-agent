@@ -4,12 +4,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 
-import {
-  buildClassificationPrompt,
-  classifyFailure,
-  narrowClassificationContext,
-  shouldOverrideBrokenLocatorToRealBug,
-} from './classifier.js'
+import { buildClassificationPrompt, classifyFailure, narrowClassificationContext } from './classifier.js'
 import type { FailureContext } from './types.js'
 
 const withMockProvider = async <T>(fn: () => Promise<T>): Promise<T> => {
@@ -48,6 +43,8 @@ describe('buildClassificationPrompt', () => {
     assert.match(prompt, /Expected vs Received/i)
     assert.match(prompt, /wrong or missing user-visible outcome/)
     assert.match(prompt, /current DOM contract/)
+    assert.match(prompt, /MUST classify REAL_BUG/)
+    assert.match(prompt, /addTask/)
     assert.ok(!prompt.includes('QA_MODE'))
   })
 
@@ -80,62 +77,8 @@ describe('narrowClassificationContext', () => {
   })
 })
 
-describe('shouldOverrideBrokenLocatorToRealBug', () => {
-  it('is true when the test calls addTask with a string then getByText that string fails', () => {
-    assert.equal(
-      shouldOverrideBrokenLocatorToRealBug(
-        minimalCtx({
-          error: `Error: expect(locator).toBeVisible() failed\nLocator: getByText('Buy groceries')\nError: element(s) not found`,
-        }),
-      ),
-      true,
-    )
-  })
-
-  it('is true for delete-task flow with two addTask calls and getByText miss', () => {
-    assert.equal(
-      shouldOverrideBrokenLocatorToRealBug({
-        testName: 'delete removes only targeted task',
-        testFile: 'tasks.spec.ts',
-        testSource: `await dashboardPage.addTask('Keep this task')\nawait dashboardPage.addTask('Delete this task')\nawait expect(page.getByText('Keep this task')).toBeVisible()`,
-        error: `expect(locator).toBeVisible() failed\nLocator: getByText('Keep this task')\nError: element(s) not found`,
-        errorStack: '',
-        playwrightErrorMessages: "waiting for getByText('Keep this task')",
-        runUrl: '',
-        branch: '',
-        commit: '',
-      }),
-      true,
-    )
-  })
-
-  it('is false when getByText target was not passed via addTask/fill/type in the test source', () => {
-    assert.equal(
-      shouldOverrideBrokenLocatorToRealBug(
-        minimalCtx({
-          testSource: `await page.getByRole('button').click()\nawait expect(page.getByText('Buy groceries')).toBeVisible()`,
-        }),
-      ),
-      false,
-    )
-  })
-
-  it('is false when failure is getByTestId / structural locator, not getByText visibility', () => {
-    assert.equal(
-      shouldOverrideBrokenLocatorToRealBug(
-        minimalCtx({
-          testSource: `await page.getByTestId('task-list').click()`,
-          error: `waiting for getByTestId('task-list')`,
-          playwrightErrorMessages: 'resolved to 0 elements',
-        }),
-      ),
-      false,
-    )
-  })
-})
-
-describe('classifyFailure: BROKEN_LOCATOR → REAL_BUG override (mock LLM)', () => {
-  it('overrides mock BROKEN_LOCATOR when addTask literal matches getByText miss (tasks showcase)', async () => {
+describe('classifyFailure (mock LLM)', () => {
+  it('classifies add-task + getByText miss as REAL_BUG', async () => {
     await withMockProvider(async () => {
       const result = await classifyFailure(
         minimalCtx({
@@ -144,14 +87,10 @@ describe('classifyFailure: BROKEN_LOCATOR → REAL_BUG override (mock LLM)', () 
       )
       assert.equal(result.category, 'REAL_BUG')
       assert.equal(result.suggestedFix, null)
-      assert.match(
-        result.reason,
-        /Test supplied this text via an action then asserted the same visible string/,
-      )
     })
   })
 
-  it('overrides mock BROKEN_LOCATOR for delete-task getByText miss after addTask', async () => {
+  it('classifies delete-task + getByText miss as REAL_BUG', async () => {
     await withMockProvider(async () => {
       const result = await classifyFailure({
         testName: 'delete removes only targeted task',
@@ -165,25 +104,10 @@ describe('classifyFailure: BROKEN_LOCATOR → REAL_BUG override (mock LLM)', () 
         commit: '',
       })
       assert.equal(result.category, 'REAL_BUG')
-      assert.equal(result.suggestedFix, null)
     })
   })
 
-  it('does not override when mock classifies getByTestId-only failure as BROKEN_LOCATOR', async () => {
-    await withMockProvider(async () => {
-      const result = await classifyFailure(
-        minimalCtx({
-          testName: 'clicks task row',
-          testSource: `await page.getByTestId('missing-row').click()`,
-          error: `waiting for getByTestId('missing-row')\nresolved to 0 elements`,
-          playwrightErrorMessages: 'locator.click: Target closed',
-        }),
-      )
-      assert.equal(result.category, 'BROKEN_LOCATOR')
-    })
-  })
-
-  it('mock classifies Expected/Received (empty input) as REAL_BUG without needing override', async () => {
+  it('classifies empty-input toHaveCount mismatch as REAL_BUG', async () => {
     await withMockProvider(async () => {
       const result = await classifyFailure({
         testName: 'empty input does not create a task',
@@ -197,6 +121,20 @@ describe('classifyFailure: BROKEN_LOCATOR → REAL_BUG override (mock LLM)', () 
         commit: '',
       })
       assert.equal(result.category, 'REAL_BUG')
+    })
+  })
+
+  it('classifies getByTestId resolution failure as BROKEN_LOCATOR', async () => {
+    await withMockProvider(async () => {
+      const result = await classifyFailure(
+        minimalCtx({
+          testName: 'clicks task row',
+          testSource: `await page.getByTestId('missing-row').click()`,
+          error: `waiting for getByTestId('missing-row')\nresolved to 0 elements`,
+          playwrightErrorMessages: 'locator.click: Target closed',
+        }),
+      )
+      assert.equal(result.category, 'BROKEN_LOCATOR')
     })
   })
 })

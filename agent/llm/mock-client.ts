@@ -57,6 +57,26 @@ const classifyFromPrompt = (prompt: string): ClassificationResult => {
     }
   }
 
+  const actionThenGetByTextMiss =
+    (input.includes('addtask') ||
+      input.includes('.fill(') ||
+      input.includes('.type(') ||
+      input.includes('presssequentially')) &&
+    input.includes('getbytext') &&
+    (input.includes('tobevisible') ||
+      input.includes('element(s) not found') ||
+      (input.includes('not found') && input.includes('visible')))
+  if (actionThenGetByTextMiss) {
+    return {
+      category: 'REAL_BUG',
+      confidence: 0.87,
+      reason:
+        'Test supplied user-visible text via an action but the assertion on that text failed; classify as wrong/missing app output (REAL_BUG).',
+      issueTitle: 'UI did not reflect data the test provided',
+      suggestedFix: null,
+    }
+  }
+
   if (
     input.includes('getbytestid') ||
     input.includes('strict mode violation') ||

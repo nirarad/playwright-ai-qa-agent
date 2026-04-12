@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
 import type { AgentConfig, FailureContext } from './types.js'
 import { logger } from './logger.js'
 
@@ -39,6 +40,9 @@ interface PlaywrightSuite {
 }
 
 interface PlaywrightJson {
+  config?: {
+    rootDir?: string
+  }
   suites?: PlaywrightSuite[]
 }
 
@@ -69,11 +73,46 @@ const buildRunUrl = (): string => {
   return `${server}/${repo}/actions/runs/${runId}`
 }
 
-const getTestSource = (filePath: string): string => {
-  if (!filePath || !existsSync(filePath)) {
+/**
+ * Playwright JSON stores `file` as a basename (e.g. `tasks.spec.ts`). Resolve it
+ * using `config.rootDir` from the same report, then repo-relative fallbacks.
+ */
+const readTestSourceForSpec = (
+  relFile: string,
+  rootDir: string | undefined,
+  resultsJsonPath: string,
+): string => {
+  if (!relFile) {
     return ''
   }
-  return readFileSync(filePath, 'utf-8')
+
+  const attempts: string[] = []
+  if (relFile.includes('/') || relFile.includes('\\')) {
+    attempts.push(relFile)
+  }
+  if (rootDir) {
+    attempts.push(join(rootDir, relFile))
+  }
+
+  const absResults = resolve(resultsJsonPath)
+  const repoRoot = dirname(dirname(absResults))
+  attempts.push(
+    join(repoRoot, 'tests', 'showcase', relFile),
+    join(repoRoot, 'tests', relFile),
+  )
+
+  for (const candidate of attempts) {
+    if (candidate && existsSync(candidate)) {
+      return readFileSync(candidate, 'utf-8')
+    }
+  }
+
+  logger.debug('Test source file not found on disk', {
+    relFile,
+    rootDir,
+    resultsJsonPath: absResults,
+  })
+  return ''
 }
 
 const getScreenshotPath = (attachments: PlaywrightAttachment[] | undefined): string | undefined => {
@@ -120,14 +159,19 @@ const joinPlaywrightErrorMessages = (
   return parts.join('\n\n')
 }
 
-const collectFailuresFromSuite = (suite: PlaywrightSuite, failures: FailureContext[]): void => {
+const collectFailuresFromSuite = (
+  suite: PlaywrightSuite,
+  failures: FailureContext[],
+  rootDir: string | undefined,
+  resultsJsonPath: string,
+): void => {
   for (const child of suite.suites ?? []) {
-    collectFailuresFromSuite(child, failures)
+    collectFailuresFromSuite(child, failures, rootDir, resultsJsonPath)
   }
 
   for (const spec of suite.specs ?? []) {
     const testFile = spec.file ?? ''
-    const testSource = getTestSource(testFile)
+    const testSource = readTestSourceForSpec(testFile, rootDir, resultsJsonPath)
 
     for (const test of spec.tests ?? []) {
       for (const result of test.results ?? []) {
@@ -171,13 +215,15 @@ export const extractFailures = (config: AgentConfig): FailureContext[] => {
     return []
   }
 
-  logger.debug('Reading Playwright results', { path: config.paths.resultsJson })
-  const raw = readFileSync(config.paths.resultsJson, 'utf-8')
+  const absResultsJson = resolve(config.paths.resultsJson)
+  logger.debug('Reading Playwright results', { path: absResultsJson })
+  const raw = readFileSync(absResultsJson, 'utf-8')
   const parsed = JSON.parse(raw) as PlaywrightJson
   const failures: FailureContext[] = []
+  const rootDir = parsed.config?.rootDir
 
   for (const suite of parsed.suites ?? []) {
-    collectFailuresFromSuite(suite, failures)
+    collectFailuresFromSuite(suite, failures, rootDir, absResultsJson)
   }
 
   logger.info('Failure extraction complete', { failureCount: failures.length })

@@ -54,6 +54,7 @@ const main = async (): Promise<void> => {
   logger.info('Processing failed tests', {
     failures: failures.length,
     phase: 'phase-3',
+    note: 'One classification (and optional GitHub actions) per failed test; later tests do not change earlier results.',
   })
 
   for (const [index, failure] of failures.entries()) {

@@ -287,75 +287,6 @@ const normalizeJsonCandidate = (raw: string): string => {
   return extractFirstJsonObject(withoutFences).trim()
 }
 
-/**
- * When the LLM returns BROKEN_LOCATOR for getByText + not visible, but the test
- * source shows the same user-visible string was passed into an action (addTask,
- * fill, etc.) and then asserted via getByText, treat as REAL_BUG: missing wrong
- * rendered content, not an obsolete automation selector. Uses only FailureContext
- * strings (no QA_MODE).
- */
-export const shouldOverrideBrokenLocatorToRealBug = (ctx: FailureContext): boolean => {
-  const combined = `${ctx.error}\n${ctx.errorStack}\n${ctx.playwrightErrorMessages ?? ''}\n${ctx.errorContext ?? ''}`
-  const lower = combined.toLowerCase()
-  if (!lower.includes('getbytext')) {
-    return false
-  }
-  if (
-    !(
-      lower.includes('tobevisible') ||
-      lower.includes('element(s) not found') ||
-      lower.includes('timeout') ||
-      lower.includes('not found')
-    )
-  ) {
-    return false
-  }
-
-  const literals: string[] = []
-  const re = /getByText\s*\(\s*['"]([^'"]+)['"]\s*\)/gi
-  let match: RegExpExecArray | null
-  while ((match = re.exec(combined)) !== null) {
-    const lit = match[1]?.trim()
-    if (lit && lit.length >= 1) {
-      literals.push(lit)
-    }
-  }
-  if (literals.length === 0) {
-    return false
-  }
-
-  const src = ctx.testSource
-  for (const lit of literals) {
-    const escaped = lit.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    const actionPattern = new RegExp(
-      `(?:addTask|fill|type|pressSequentially)\\s*\\(\\s*['"]${escaped}['"]`,
-    )
-    if (actionPattern.test(src)) {
-      return true
-    }
-  }
-  return false
-}
-
-const applyBrokenLocatorToRealBugOverride = (
-  ctx: FailureContext,
-  parsed: ClassificationResult,
-): ClassificationResult => {
-  const confidence = Math.max(parsed.confidence, 0.85)
-  logger.info('Classification override: action literal + getByText visibility miss → REAL_BUG', {
-    testName: ctx.testName,
-    modelCategory: parsed.category,
-  })
-  return {
-    category: 'REAL_BUG',
-    confidence,
-    reason:
-      'Test supplied this text via an action then asserted the same visible string; missing text indicates wrong or missing app content (REAL_BUG), not an obsolete selector alone.',
-    issueTitle: buildFallbackIssueTitle(ctx, 'REAL_BUG'),
-    suggestedFix: null,
-  }
-}
-
 const hasExplicitLocatorResolutionSignal = (ctx: FailureContext): boolean => {
   const signalText = `${ctx.error}\n${ctx.errorStack}\n${ctx.playwrightErrorMessages ?? ''}\n${ctx.errorContext ?? ''}`.toLowerCase()
   const hasExpectedReceivedMismatch =
@@ -460,6 +391,10 @@ Reason in this order:
 2) Call logs / errors[]: Use "waiting for …", "resolved to N elements", timeouts. Distinguish "selector matches nothing in the tree" from "selector matched but assertion failed" or "wrong visible text/state".
 3) Test source: Compare literals the test passes into actions (titles typed, labels, page object calls) with what the failing assertion expects. If the same literal appears in an action and in getByText/expect but the UI did not show that text, prefer REAL_BUG unless the DOM snapshot or error-context proves the automation contract changed (e.g. renamed data-testid only).
 4) DOM snapshot / error-context: Decide whether missing expected text is due to wrong/missing data (REAL_BUG) vs missing element or obsolete selector (BROKEN_LOCATOR).
+
+Hard rules (non-negotiable when the evidence matches):
+- If Test source shows a string passed into addTask, fill, type, or pressSequentially and the failure is getByText/toBeVisible (or similar) not finding that same user-visible text, you MUST classify REAL_BUG: the app likely rendered wrong or empty content, not a broken automation selector by itself.
+- If Expected and Received both appear (including toHaveCount mismatches), you MUST classify REAL_BUG unless the diff is purely a renamed stable selector proven by DOM.
 
 Category definitions:
 - BROKEN_LOCATOR: The automation target no longer matches the current DOM contract (wrong/obsolete data-testid, role, or selector; element not in the document when the product structure should still expose it). The app behavior may be fine; the test aims at the wrong node.
@@ -605,13 +540,6 @@ export const classifyFailure = async (ctx: FailureContext): Promise<Classificati
         ),
         suggestedFix: strictSuggestedFix,
       }
-    }
-
-    if (
-      parsed.category === 'BROKEN_LOCATOR' &&
-      shouldOverrideBrokenLocatorToRealBug(ctx)
-    ) {
-      return applyBrokenLocatorToRealBugOverride(ctx, parsed)
     }
 
     if (parsed.category !== 'BROKEN_LOCATOR') {
