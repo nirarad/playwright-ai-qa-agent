@@ -164,7 +164,7 @@ export const getAgentConfig = (): AgentConfig => {
       interRequestDelayMs: parseNonNegativeInteger(process.env.AGENT_INTER_REQUEST_DELAY_MS, 750),
     },
     paths: {
-      resultsJson: process.env.AGENT_RESULTS_JSON_PATH ?? 'test-results/results.json',
+      resultsJson: process.env.AGENT_RESULTS_JSON_PATH ?? '../test-results/results.json',
     },
     ollama,
   }

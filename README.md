@@ -131,7 +131,7 @@ For a **local** dev server, drop `BASE_URL` or set `BASE_URL=http://localhost:30
 
 ## 3. LLM failure agent
 
-The agent reads Playwright output (by default `test-results/results.json`), builds failure context, and calls a configurable LLM to classify the failure.
+The agent reads Playwright’s JSON report at the **repository root** (`test-results/results.json`; the agent process uses `../test-results/results.json` because `npm run agent` runs with cwd `agent/`), builds failure context, and calls a configurable LLM to classify the failure.
 
 **Setup**
 
@@ -144,13 +144,13 @@ The agent reads Playwright output (by default `test-results/results.json`), buil
 npm run agent
 ```
 
-`npm run agent:local-results` (root) runs the agent with `AGENT_RESULTS_JSON_PATH` defaulting to `test-results/results.json` and debug logs; it uses **cmd** `set` syntax. In **PowerShell**, set `$env:AGENT_RESULTS_JSON_PATH`, `$env:AGENT_LOG_LEVEL='debug'`, then `npm run agent` instead.
+`npm run agent:local-results` (root) runs the agent with debug logs and sets `AGENT_RESULTS_JSON_PATH` to the repo-root Playwright output (`../test-results/results.json` from the `agent/` package cwd). It uses **cmd** `set` syntax. In **PowerShell**, set `$env:AGENT_LOG_LEVEL='debug'`, then `npm run agent` (the default path already points at the repo `test-results/results.json`).
 
 **PowerShell** — mock provider and explicit results path:
 
 ```powershell
 $env:AI_PROVIDER='mock'
-$env:AGENT_RESULTS_JSON_PATH='test-results/results.json'
+$env:AGENT_RESULTS_JSON_PATH='../test-results/results.json'
 npm run agent
 ```
 
@@ -161,6 +161,7 @@ $env:AI_PROVIDER='ollama'
 $env:AI_MODEL='qwen2.5:7b'
 $env:OLLAMA_BASE_URL='http://127.0.0.1:11434'
 $env:AGENT_LOG_LEVEL='debug'
+$env:AGENT_RESULTS_JSON_PATH='../test-results/results.json'
 npm run agent
 ```
 
@@ -217,7 +218,7 @@ Configure **GitHub Secrets** (e.g. `ANTHROPIC_API_KEY`, provider keys) and repos
 
 | Variable | Required | Default | Description |
 | --- | --- | --- | --- |
-| `AGENT_RESULTS_JSON_PATH` | No | `test-results/results.json` | Path to Playwright JSON results file |
+| `AGENT_RESULTS_JSON_PATH` | No | `../test-results/results.json` (relative to `agent/` when using `npm run agent`) | Path to Playwright JSON results file |
 | `AGENT_CONFIDENCE_THRESHOLD` | No | `0.75` | Minimum confidence gate for downstream decisions |
 | `AGENT_MAX_FAILURES_PER_RUN` | No | `3` | Maximum failures to process per run |
 | `AGENT_ENABLE_IN_CI` | No | `false` | Enable agent execution in CI (Phase 1 default is disabled) |
