@@ -159,7 +159,17 @@ const main = async (): Promise<void> => {
     }
 
     if (aboveThreshold) {
-      logger.error('Failure classified', classificationLog)
+      const wantedIssue =
+        reportableCategory && config.actions.enableBugIssue
+      const issueActionOk =
+        !wantedIssue ||
+        actionsExecuted === 'github-issue' ||
+        actionsExecuted === 'github-issue+healer-pr'
+      if (wantedIssue && !issueActionOk) {
+        logger.warn('Failure classified', classificationLog)
+      } else {
+        logger.info('Failure classified', classificationLog)
+      }
     } else {
       logger.info('Failure classified', classificationLog)
     }
