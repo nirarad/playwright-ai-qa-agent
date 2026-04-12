@@ -33,7 +33,7 @@ const main = async (): Promise<void> => {
     githubBaseBranch: config.github.baseBranch,
     ...(config.llm.provider === 'ollama'
       ? {
-          ollamaMaxDomChars: config.ollama.maxDomChars,
+          classifyMaxDomChars: config.classificationContext.maxDomChars,
           ollamaMaxClassifyPredict: config.ollama.maxClassifyPredict,
           ollamaNumCtxMax: config.ollama.numCtxMax,
         }
@@ -89,14 +89,29 @@ const main = async (): Promise<void> => {
         actionsExecuted = 'github-issue'
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
+        const isUnauthorized =
+          message.includes('401') ||
+          message.toLowerCase().includes('bad credentials')
         logger.error('Issue creation failed', {
           testName: failure.testName,
           testFile: failure.testFile,
           category: classification.category,
           error: message,
+          hint: isUnauthorized
+            ? 'Set a valid GITHUB_TOKEN (PAT with repo/issues scope for this repository). For forks, use a token that can access GITHUB_REPOSITORY.'
+            : undefined,
           phase: 'phase-3',
         })
       }
+    } else if (aboveThreshold && reportableCategory && !config.actions.enableBugIssue) {
+      logger.info('GitHub issue not created: AGENT_ENABLE_BUG_ISSUE is not true', {
+        testName: failure.testName,
+        testFile: failure.testFile,
+        category: classification.category,
+        hint:
+          'Set AGENT_ENABLE_BUG_ISSUE=true and provide GITHUB_TOKEN plus GITHUB_REPOSITORY (owner/repo) to create issues.',
+        phase: 'phase-3',
+      })
     }
 
     if (

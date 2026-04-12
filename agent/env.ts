@@ -1,6 +1,10 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { logger } from './logger.js'
+
+/** Directory containing this module (`agent/`). */
+const agentDir = dirname(fileURLToPath(import.meta.url))
 
 const parseEnvLine = (line: string): [string, string] | null => {
   const trimmed = line.trim()
@@ -45,8 +49,9 @@ const loadEnvFromFile = (path: string): number => {
     }
 
     const [key, value] = parsed
-    // Keep existing env values highest precedence.
-    if (process.env[key] !== undefined) {
+    // Keep existing non-empty env values highest precedence (shell exports win).
+    const existing = process.env[key]
+    if (existing !== undefined && existing !== '') {
       continue
     }
 
@@ -58,19 +63,36 @@ const loadEnvFromFile = (path: string): number => {
 }
 
 export const loadEnvForAgent = (): void => {
-  const candidates = [
-    resolve(process.cwd(), '.env'),
-    resolve(process.cwd(), '..', '.env'),
+  // Resolve from this file so loading works whether the shell cwd is the repo root
+  // (npm run agent) or agent/ (tsx orchestrator.ts). Repo root first, then agent/.env
+  // so local overrides win only when the same key is not already set.
+  const fromPackage = [
+    resolve(agentDir, '..', '.env'),
+    resolve(agentDir, '.env'),
   ]
+  const fromCwd = [resolve(process.cwd(), '.env')]
+  const candidates = [...new Set([...fromPackage, ...fromCwd])]
 
   let loadedTotal = 0
   for (const candidate of candidates) {
     loadedTotal += loadEnvFromFile(candidate)
   }
 
+  if (process.env.GITHUB_TOKEN) {
+    process.env.GITHUB_TOKEN = process.env.GITHUB_TOKEN.trim()
+  }
+  if (process.env.GITHUB_REPOSITORY) {
+    process.env.GITHUB_REPOSITORY = process.env.GITHUB_REPOSITORY.trim()
+  }
+
+  const tokenPresent = Boolean(process.env.GITHUB_TOKEN?.trim())
+  const repoPresent = Boolean(process.env.GITHUB_REPOSITORY?.trim())
+
   logger.debug('Environment loading complete', {
     loadedKeys: loadedTotal,
     searchedPaths: candidates,
+    githubTokenPresent: tokenPresent,
+    githubRepositoryPresent: repoPresent,
   })
 }
 

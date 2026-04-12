@@ -142,7 +142,7 @@ The agent reads Playwright’s JSON report at the **repository root** (`test-res
 **Setup**
 
 1. From the repository root: `npm ci` (workspaces install `agent/` and `demo-app/`).
-2. Add provider keys to `.env` as needed — see [Environment Variables](#environment-variables) (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`, Ollama URL, etc.).
+2. Add provider keys to `.env` as needed — see [Environment Variables](#environment-variables) (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`, Ollama URL, etc.). The agent loads **repository root** `.env` first, then `agent/.env` if present; variables already set in the shell are left unchanged. Put `GITHUB_TOKEN` and `GITHUB_REPOSITORY` in the root `.env` for local issue/PR actions.
 
 **Run** (after a test run has produced results; failures are the usual case):
 
@@ -168,8 +168,19 @@ $env:AI_MODEL='qwen2.5:7b'
 $env:OLLAMA_BASE_URL='http://127.0.0.1:11434'
 $env:AGENT_LOG_LEVEL='debug'
 $env:AGENT_RESULTS_JSON_PATH='../test-results/results.json'
+$env:AGENT_ENABLE_BUG_ISSUE='true'
+$env:AGENT_ENABLE_HEAL_PR='true'
 npm run agent
+
+# Optional — GitHub Issues for REAL_BUG / BROKEN_LOCATOR / ENV_ISSUE when confidence clears the threshold (token needs `issues:write`):
+# $env:AGENT_ENABLE_BUG_ISSUE='true'
+# $env:GITHUB_TOKEN='<personal access token>'
+# $env:GITHUB_REPOSITORY='owner/repo'
+# Optional — healer PR for BROKEN_LOCATOR (same token needs `contents` + `pull-requests`):
+# $env:AGENT_ENABLE_HEAL_PR='true'
 ```
+
+By default **no** issue or PR is created; set the optional `GITHUB_*` variables when enabling issue or healer actions. **`401 Bad credentials`** from the GitHub API means `GITHUB_TOKEN` is missing, expired, or not allowed to access **`GITHUB_REPOSITORY`**—use a token with **`repo`** (classic PAT) or fine-grained access including **Issues** (and **Contents** / **Pull requests** for the healer) on that repository.
 
 **Ollama in Docker** (optional): `docker build -t qa-agent-ollama ./ollama` then `docker run …` or `docker compose -f ollama/docker-compose.yml up --build -d`. See `ollama/` and the **NVIDIA / CPU-only** notes in that folder’s compose files. Point `OLLAMA_BASE_URL` at the container (`http://127.0.0.1:11434` by default).
 
@@ -296,9 +307,12 @@ Configure **GitHub Secrets** (e.g. `ANTHROPIC_API_KEY`, provider keys) and repos
 | -------------------------------------- | ------------- | --------------------------------------------------------------------------------------------------------------------- |
 | `OLLAMA_BASE_URL`                      | Conditionally | Ollama base URL when `AI_PROVIDER=ollama` (default: `http://127.0.0.1:11434`)                                         |
 | `OLLAMA_REQUEST_TIMEOUT_MS`            | Optional      | Abort Ollama `/api/generate` after this many ms (`0` or unset = no limit). Large prompts on CPU can take many minutes |
-| `AGENT_OLLAMA_MAX_DOM_CHARS`           | Optional      | Cap DOM snapshot chars for `ollama` (default `8000`; smaller = faster CPU runs)                                       |
-| `AGENT_OLLAMA_MAX_ERROR_CONTEXT_CHARS` | Optional      | Cap error-context markdown for `ollama` (default `6000`)                                                              |
-| `AGENT_OLLAMA_MAX_TEST_SOURCE_CHARS`   | Optional      | Cap test file source for `ollama` (default `10000`)                                                                   |
+| `AGENT_CLASSIFY_MAX_DOM_CHARS`         | Optional      | Cap DOM snapshot chars in classification prompts for **any** LLM (default `8000`; unset falls back to `AGENT_OLLAMA_MAX_DOM_CHARS`) |
+| `AGENT_CLASSIFY_MAX_ERROR_CONTEXT_CHARS` | Optional    | Cap error-context / Playwright error messages in classification prompts (default `6000`; fallback `AGENT_OLLAMA_MAX_ERROR_CONTEXT_CHARS`) |
+| `AGENT_CLASSIFY_MAX_TEST_SOURCE_CHARS` | Optional      | Cap test file source in classification prompts (default `10000`; fallback `AGENT_OLLAMA_MAX_TEST_SOURCE_CHARS`)         |
+| `AGENT_OLLAMA_MAX_DOM_CHARS`           | Optional      | Legacy alias when `AGENT_CLASSIFY_MAX_DOM_CHARS` is unset (default `8000`)                                            |
+| `AGENT_OLLAMA_MAX_ERROR_CONTEXT_CHARS` | Optional      | Legacy alias when `AGENT_CLASSIFY_MAX_ERROR_CONTEXT_CHARS` is unset (default `6000`)                                  |
+| `AGENT_OLLAMA_MAX_TEST_SOURCE_CHARS`   | Optional      | Legacy alias when `AGENT_CLASSIFY_MAX_TEST_SOURCE_CHARS` is unset (default `10000`)                                   |
 | `AGENT_OLLAMA_MAX_CLASSIFY_PREDICT`    | Optional      | Max decode tokens per classify call for `ollama` (default `384`; lowers latency vs `AGENT_MAX_TOKENS_CLASSIFY`)       |
 | `AGENT_OLLAMA_NUM_CTX_MIN`             | Optional      | Lower bound for Ollama `num_ctx` (default `4096`)                                                                     |
 | `AGENT_OLLAMA_NUM_CTX_MAX`             | Optional      | Upper bound for Ollama `num_ctx` (default `16384`; trim prompts before raising)                                       |

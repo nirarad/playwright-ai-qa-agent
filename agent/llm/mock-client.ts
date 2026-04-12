@@ -2,29 +2,30 @@ import type { ClassificationResult } from '../types.js'
 import { logger } from '../logger.js'
 import type { LlmClient } from './types.js'
 
+/**
+ * Use only the Playwright error/stack/messages + test source so instruction prose
+ * (e.g. "waiting for …" in the prompt template) does not trigger mock rules.
+ */
 const extractSignals = (prompt: string): string => {
-  const errorMatch = prompt.match(/Error:\s*([\s\S]*?)\nStack:/)
-  const stackMatch = prompt.match(/Stack:\s*([\s\S]*?)\n\nTest source:/)
-  const sourceMatch = prompt.match(/Test source:\s*([\s\S]*)$/)
-  return `${errorMatch?.[1] ?? ''}\n${stackMatch?.[1] ?? ''}\n${sourceMatch?.[1] ?? ''}`.toLowerCase()
+  const m = prompt.match(
+    /Error \(primary message from Playwright\):\s*([\s\S]*?)\nTest source:\s*([\s\S]*)$/im,
+  )
+  if (m) {
+    return `${m[1]}\n${m[2]}`.toLowerCase()
+  }
+  return prompt.toLowerCase()
 }
 
 const classifyFromPrompt = (prompt: string): ClassificationResult => {
   const input = extractSignals(prompt)
 
-  if (
-    input.includes('getbytestid') ||
-    input.includes('locator') ||
-    input.includes('strict mode violation') ||
-    input.includes('waiting for locator') ||
-    input.includes('element is not attached')
-  ) {
+  if (input.includes('expected') && input.includes('received')) {
     return {
-      category: 'BROKEN_LOCATOR',
-      confidence: 0.86,
-      reason: 'Element targeting appears stale or renamed.',
-      issueTitle: 'Locator mismatch: selector no longer finds the element',
-      suggestedFix: 'Prefer stable data-testid values and update locator usage.',
+      category: 'REAL_BUG',
+      confidence: 0.84,
+      reason: 'Assertion mismatch indicates behavior diverges from expectation.',
+      issueTitle: 'UI behavior mismatch: expected state not reached',
+      suggestedFix: null,
     }
   }
 
@@ -42,7 +43,11 @@ const classifyFromPrompt = (prompt: string): ClassificationResult => {
     }
   }
 
-  if (input.includes('timeout') || input.includes('timed out')) {
+  if (
+    input.includes('timed out') ||
+    input.includes('timeout exceeded') ||
+    input.includes('test timeout')
+  ) {
     return {
       category: 'FLAKY',
       confidence: 0.72,
@@ -53,10 +58,28 @@ const classifyFromPrompt = (prompt: string): ClassificationResult => {
   }
 
   if (
+    input.includes('getbytestid') ||
+    input.includes('strict mode violation') ||
+    input.includes('waiting for locator') ||
+    input.includes('waiting for getbytestid') ||
+    input.includes('element is not attached') ||
+    (input.includes('locator') &&
+      (input.includes('waiting for') || input.includes('resolved to 0')))
+  ) {
+    return {
+      category: 'BROKEN_LOCATOR',
+      confidence: 0.86,
+      reason: 'Element targeting appears stale or renamed.',
+      issueTitle: 'Locator mismatch: selector no longer finds the element',
+      suggestedFix: 'Prefer stable data-testid values and update locator usage.',
+    }
+  }
+
+  if (
     input.includes('tohaveurl') ||
     input.includes('toequal') ||
     input.includes('tobevisible') ||
-    (input.includes('expected') && input.includes('received'))
+    input.includes('tohavecount')
   ) {
     return {
       category: 'REAL_BUG',

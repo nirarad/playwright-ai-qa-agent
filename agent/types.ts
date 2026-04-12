@@ -34,10 +34,15 @@ export interface ClassificationResult {
   suggestedFix: string | null
 }
 
-export interface OllamaPerformanceConfig {
+/** Limits for trimming optional fields before any LLM classification call. */
+export interface ClassificationContextLimits {
   maxDomChars: number
   maxErrorContextChars: number
   maxTestSourceChars: number
+}
+
+/** Ollama HTTP API tuning (num_ctx, num_predict cap). */
+export interface OllamaPerformanceConfig {
   maxClassifyPredict: number
   numCtxMin: number
   numCtxMax: number
@@ -84,6 +89,7 @@ export interface AgentConfig {
   paths: {
     resultsJson: string
   }
-  /** Used when `llm.provider` is `ollama` (prompt trim + generate options). */
+  classificationContext: ClassificationContextLimits
+  /** Ollama `/api/generate` options (context window sizing). */
   ollama: OllamaPerformanceConfig
 }

@@ -4,10 +4,10 @@ import { getLlmClient } from './llm/factory.js'
 import type { LlmClient } from './llm/types.js'
 import type {
   AgentConfig,
+  ClassificationContextLimits,
   ClassificationResult,
   FailureCategory,
   FailureContext,
-  OllamaPerformanceConfig,
 } from './types.js'
 
 const RULE_BASED_BROKEN_LOCATOR_CONFIDENCE = 0.93
@@ -287,6 +287,75 @@ const normalizeJsonCandidate = (raw: string): string => {
   return extractFirstJsonObject(withoutFences).trim()
 }
 
+/**
+ * When the LLM returns BROKEN_LOCATOR for getByText + not visible, but the test
+ * source shows the same user-visible string was passed into an action (addTask,
+ * fill, etc.) and then asserted via getByText, treat as REAL_BUG: missing wrong
+ * rendered content, not an obsolete automation selector. Uses only FailureContext
+ * strings (no QA_MODE).
+ */
+export const shouldOverrideBrokenLocatorToRealBug = (ctx: FailureContext): boolean => {
+  const combined = `${ctx.error}\n${ctx.errorStack}\n${ctx.playwrightErrorMessages ?? ''}\n${ctx.errorContext ?? ''}`
+  const lower = combined.toLowerCase()
+  if (!lower.includes('getbytext')) {
+    return false
+  }
+  if (
+    !(
+      lower.includes('tobevisible') ||
+      lower.includes('element(s) not found') ||
+      lower.includes('timeout') ||
+      lower.includes('not found')
+    )
+  ) {
+    return false
+  }
+
+  const literals: string[] = []
+  const re = /getByText\s*\(\s*['"]([^'"]+)['"]\s*\)/gi
+  let match: RegExpExecArray | null
+  while ((match = re.exec(combined)) !== null) {
+    const lit = match[1]?.trim()
+    if (lit && lit.length >= 1) {
+      literals.push(lit)
+    }
+  }
+  if (literals.length === 0) {
+    return false
+  }
+
+  const src = ctx.testSource
+  for (const lit of literals) {
+    const escaped = lit.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const actionPattern = new RegExp(
+      `(?:addTask|fill|type|pressSequentially)\\s*\\(\\s*['"]${escaped}['"]`,
+    )
+    if (actionPattern.test(src)) {
+      return true
+    }
+  }
+  return false
+}
+
+const applyBrokenLocatorToRealBugOverride = (
+  ctx: FailureContext,
+  parsed: ClassificationResult,
+): ClassificationResult => {
+  const confidence = Math.max(parsed.confidence, 0.85)
+  logger.info('Classification override: action literal + getByText visibility miss → REAL_BUG', {
+    testName: ctx.testName,
+    modelCategory: parsed.category,
+  })
+  return {
+    category: 'REAL_BUG',
+    confidence,
+    reason:
+      'Test supplied this text via an action then asserted the same visible string; missing text indicates wrong or missing app content (REAL_BUG), not an obsolete selector alone.',
+    issueTitle: buildFallbackIssueTitle(ctx, 'REAL_BUG'),
+    suggestedFix: null,
+  }
+}
+
 const hasExplicitLocatorResolutionSignal = (ctx: FailureContext): boolean => {
   const signalText = `${ctx.error}\n${ctx.errorStack}\n${ctx.playwrightErrorMessages ?? ''}\n${ctx.errorContext ?? ''}`.toLowerCase()
   const hasExpectedReceivedMismatch =
@@ -328,7 +397,10 @@ const hasExplicitLocatorResolutionSignal = (ctx: FailureContext): boolean => {
   return strongSignatures.some((signature) => signalText.includes(signature))
 }
 
-const truncateHeadForOllama = (value: string | undefined, maxChars: number): string | undefined => {
+const truncateClassificationField = (
+  value: string | undefined,
+  maxChars: number,
+): string | undefined => {
   if (value === undefined) {
     return undefined
   }
@@ -336,21 +408,23 @@ const truncateHeadForOllama = (value: string | undefined, maxChars: number): str
     return value
   }
   const omitted = value.length - maxChars
-  return `${value.slice(0, maxChars)}\n\n...[truncated ${omitted} chars for ollama performance]`
+  return `${value.slice(0, maxChars)}\n\n...[truncated ${omitted} chars; classification context limit]`
 }
 
-const narrowContextForOllama = (
+/** Trims large optional fields before sending failure context to any LLM provider. */
+export const narrowClassificationContext = (
   ctx: FailureContext,
-  limits: OllamaPerformanceConfig,
+  limits: ClassificationContextLimits,
 ): FailureContext => ({
   ...ctx,
-  errorContext: truncateHeadForOllama(ctx.errorContext, limits.maxErrorContextChars),
-  playwrightErrorMessages: truncateHeadForOllama(
+  errorContext: truncateClassificationField(ctx.errorContext, limits.maxErrorContextChars),
+  playwrightErrorMessages: truncateClassificationField(
     ctx.playwrightErrorMessages,
     limits.maxErrorContextChars,
   ),
-  domSnapshot: truncateHeadForOllama(ctx.domSnapshot, limits.maxDomChars),
-  testSource: truncateHeadForOllama(ctx.testSource, limits.maxTestSourceChars) ?? ctx.testSource,
+  domSnapshot: truncateClassificationField(ctx.domSnapshot, limits.maxDomChars),
+  testSource:
+    truncateClassificationField(ctx.testSource, limits.maxTestSourceChars) ?? ctx.testSource,
 })
 
 const buildRepairPrompt = (rawResponse: string): string => {
@@ -370,7 +444,7 @@ Model output to repair:
 ${rawResponse}`
 }
 
-const buildClassificationPrompt = (
+export const buildClassificationPrompt = (
   ctxForLlm: FailureContext,
   locatorRuleExplanationOnly: boolean,
 ): string => {
@@ -379,16 +453,19 @@ const buildClassificationPrompt = (
     : ''
   return `${ruleLead}You are a QA engineer analyzing a Playwright test failure.
 
-Treat the failing test as the source of truth for requirements:
-- Infer expected behavior from test steps and assertions in "Test source".
-- Use assertion error text (Expected vs Received) as strongest mismatch signal.
-- Do not invent product requirements beyond what test implies.
+Base your classification only on the artifacts below (error text, stacks, Playwright call logs, error-context, DOM snapshot, test source). Do not assume hidden test harness flags or how the app was configured for the run.
 
-Classify into exactly one category:
-- BROKEN_LOCATOR
-- REAL_BUG
-- FLAKY
-- ENV_ISSUE
+Reason in this order:
+1) Assertion shape: If the failure includes Expected vs Received (counts, text, strict mode, or visibility timeout vs missing content), treat that as primary evidence. Count or state mismatches after the locator resolved usually indicate REAL_BUG (wrong app outcome), not automation selector drift.
+2) Call logs / errors[]: Use "waiting for …", "resolved to N elements", timeouts. Distinguish "selector matches nothing in the tree" from "selector matched but assertion failed" or "wrong visible text/state".
+3) Test source: Compare literals the test passes into actions (titles typed, labels, page object calls) with what the failing assertion expects. If the same literal appears in an action and in getByText/expect but the UI did not show that text, prefer REAL_BUG unless the DOM snapshot or error-context proves the automation contract changed (e.g. renamed data-testid only).
+4) DOM snapshot / error-context: Decide whether missing expected text is due to wrong/missing data (REAL_BUG) vs missing element or obsolete selector (BROKEN_LOCATOR).
+
+Category definitions:
+- BROKEN_LOCATOR: The automation target no longer matches the current DOM contract (wrong/obsolete data-testid, role, or selector; element not in the document when the product structure should still expose it). The app behavior may be fine; the test aims at the wrong node.
+- REAL_BUG: The test expectation matches the intended product behavior, but the application produced the wrong or missing user-visible outcome after actions (including getByText/toBeVisible timeouts when the test had just supplied that string via an action or page object). Assertion diffs (Expected/Received) pointing at wrong counts or state strongly support REAL_BUG.
+- FLAKY: Non-deterministic timing/order when the same test would pass on retry without code changes.
+- ENV_ISSUE: Environment or infrastructure (network, missing secret, wrong base URL, service down).
 
 Respond with valid JSON only:
 {
@@ -403,13 +480,15 @@ For BROKEN_LOCATOR specifically:
 - suggestedFix must target exactly one locator.
 - Use this format when possible: Update only data-testid '<old>' to '<new>' (element: <input|button|label|link|other>). Do not modify any other locator.
 - Never suggest multiple locator options in one suggestedFix.
+- For REAL_BUG, suggestedFix is usually null unless you have a minimal product fix unrelated to locator renames.
 
 Test name: ${ctxForLlm.testName}
 Test file: ${ctxForLlm.testFile}
-Error: ${ctxForLlm.error}
+Error (primary message from Playwright):
+${ctxForLlm.error}
 Stack:
 ${ctxForLlm.errorStack}
-Additional Playwright error messages (from JSON errors[], if any):
+Additional Playwright error messages (from JSON errors[], call logs):
 ${ctxForLlm.playwrightErrorMessages ?? '(none)'}
 Error context markdown (if available):
 ${ctxForLlm.errorContext ?? '(none)'}
@@ -476,10 +555,7 @@ export const classifyFailure = async (ctx: FailureContext): Promise<Classificati
     })
   }
 
-  const ctxForLlm =
-    config.llm.provider === 'ollama'
-      ? narrowContextForOllama(ctx, config.ollama)
-      : ctx
+  const ctxForLlm = narrowClassificationContext(ctx, config.classificationContext)
 
   const prompt = buildClassificationPrompt(ctxForLlm, locatorRuleExplanationOnly)
 
@@ -529,6 +605,13 @@ export const classifyFailure = async (ctx: FailureContext): Promise<Classificati
         ),
         suggestedFix: strictSuggestedFix,
       }
+    }
+
+    if (
+      parsed.category === 'BROKEN_LOCATOR' &&
+      shouldOverrideBrokenLocatorToRealBug(ctx)
+    ) {
+      return applyBrokenLocatorToRealBugOverride(ctx, parsed)
     }
 
     if (parsed.category !== 'BROKEN_LOCATOR') {

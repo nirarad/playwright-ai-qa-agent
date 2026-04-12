@@ -1,4 +1,8 @@
-import type { AgentConfig, OllamaPerformanceConfig } from './types.js'
+import type {
+  AgentConfig,
+  ClassificationContextLimits,
+  OllamaPerformanceConfig,
+} from './types.js'
 
 const parseNumber = (value: string | undefined, fallback: number): number => {
   if (!value) {
@@ -104,16 +108,25 @@ export const getAgentConfig = (): AgentConfig => {
     )
   }
 
-  const ollama: OllamaPerformanceConfig = {
-    maxDomChars: parsePositiveInteger(process.env.AGENT_OLLAMA_MAX_DOM_CHARS, 8000),
+  const classificationContext: ClassificationContextLimits = {
+    maxDomChars: parsePositiveInteger(
+      process.env.AGENT_CLASSIFY_MAX_DOM_CHARS ??
+        process.env.AGENT_OLLAMA_MAX_DOM_CHARS,
+      8000,
+    ),
     maxErrorContextChars: parsePositiveInteger(
-      process.env.AGENT_OLLAMA_MAX_ERROR_CONTEXT_CHARS,
+      process.env.AGENT_CLASSIFY_MAX_ERROR_CONTEXT_CHARS ??
+        process.env.AGENT_OLLAMA_MAX_ERROR_CONTEXT_CHARS,
       6000,
     ),
     maxTestSourceChars: parsePositiveInteger(
-      process.env.AGENT_OLLAMA_MAX_TEST_SOURCE_CHARS,
+      process.env.AGENT_CLASSIFY_MAX_TEST_SOURCE_CHARS ??
+        process.env.AGENT_OLLAMA_MAX_TEST_SOURCE_CHARS,
       10000,
     ),
+  }
+
+  const ollama: OllamaPerformanceConfig = {
     maxClassifyPredict: parsePositiveInteger(
       process.env.AGENT_OLLAMA_MAX_CLASSIFY_PREDICT,
       384,
@@ -166,6 +179,7 @@ export const getAgentConfig = (): AgentConfig => {
     paths: {
       resultsJson: process.env.AGENT_RESULTS_JSON_PATH ?? '../test-results/results.json',
     },
+    classificationContext,
     ollama,
   }
 }
