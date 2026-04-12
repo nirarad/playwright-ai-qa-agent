@@ -64,127 +64,18 @@ Run Playwright tests (JSON + HTML reports, screenshots/traces)
 7. If the classification is `REAL_BUG` and confidence is above a threshold, the agent creates a GitHub Issue with the error details and CI run link.
 8. The workflow exits with a failure code if Playwright failed so the check is actionable, while still preserving all artifacts and the agent’s output.
 
-## Failure Classification
+This README is organized into four sections: **Demo app** → **Playwright tests** → **LLM failure agent** → **CI (GitHub Actions)**.
 
+## 1. Demo app (TaskFlow)
 
-| Category         | What triggers it                                                                                                | Automated action taken                                                      |
-| ---------------- | --------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| `BROKEN_LOCATOR` | Element not found, selector mismatch, `data-testid` changed, or DOM shape changed so locators no longer resolve | Create `AUTOMATION_BUG` Issue with locator update details; if healer is enabled, also open a linked PR (`Closes #issue`) |
-| `REAL_BUG`       | Assertions fail due to application logic regression (auth/task/profile flows do not behave as expected)         | Create GitHub Issue with full failure context (confidence-gated)            |
-| `FLAKY`          | Timing/race conditions, intermittent delays, or order-dependent behavior                                        | Log only                                                                    |
-| `ENV_ISSUE`      | CI/environment configuration problems, missing env vars, or external connectivity-like failures                 | Log only                                                                    |
+TaskFlow is a small Next.js task manager (localStorage, no DB) used as the system under test. It ships **Break Modes** so you can simulate locator bugs, logic bugs, flaky timing, and auth failures.
 
+| Resource | Link |
+| --- | --- |
+| **Production** | [playwright-ai-qa-agent.vercel.app](https://playwright-ai-qa-agent.vercel.app) |
+| **Playwright HTML report (GitHub Pages)** | [nirarad.github.io/playwright-ai-qa-agent](https://nirarad.github.io/playwright-ai-qa-agent/) |
 
-## Demo App
-
-TaskFlow is a deliberately small task manager with auth and a few core flows that are realistic enough to test and debug. It uses localStorage instead of a database so it can run on the Vercel free tier without external dependencies. It also includes Break Modes that simulate common failure classes so you can demonstrate the pipeline on demand.
-
-- **Live URL**: `https://playwright-ai-qa-agent.vercel.app`
-- **Latest Playwright HTML report (GitHub Pages)**: `https://nirarad.github.io/playwright-ai-qa-agent/`
-- **Screenshot**:
-
-```html
-<!-- Add screenshot here -->
-```
-
-
-| Break Mode        | What it simulates                                                                                 | Expected agent response |
-| ----------------- | ------------------------------------------------------------------------------------------------- | ----------------------- |
-| `selector-change` | Internal app `data-testid` changes (tasks/profile) that break locators while login remains stable | `BROKEN_LOCATOR` → `AUTOMATION_BUG` Issue (+ healer PR when enabled)   |
-| `logic-bug`       | App logic bug (task creation behavior is wrong)                                                   | `REAL_BUG` → Issue      |
-| `slow-network`    | Artificial latency that makes tests timing-sensitive                                              | `FLAKY` → log only      |
-| `auth-break`      | Login always fails regardless of credentials                                                      | `REAL_BUG` → Issue      |
-
-
-### `qaMode` Session Injection
-
-Use `qaMode` query param when opening a new browser session to preselect QA mode for that session.
-
-- `none`
-- `selector-change`
-- `logic-bug`
-- `slow-network`
-- `auth-break`
-
-Examples:
-
-```text
-https://YOUR_VERCEL_URL.vercel.app/?qaMode=none
-https://YOUR_VERCEL_URL.vercel.app/?qaMode=selector-change
-https://YOUR_VERCEL_URL.vercel.app/?qaMode=logic-bug
-https://YOUR_VERCEL_URL.vercel.app/?qaMode=slow-network
-https://YOUR_VERCEL_URL.vercel.app/?qaMode=auth-break
-```
-
-Notes:
-
-- `qaMode` is session-scoped and stored in `sessionStorage`.
-- It applies to the current tab/session only.
-- The app removes `qaMode` from the URL after bootstrap.
-
-## Project Structure
-
-```text
-.
-├── .cursor/                         # Cursor rules for consistent agent behavior
-│   └── rules/
-│       ├── cursor-rules.mdc         # Rule authoring conventions
-│       ├── self-improve.mdc         # Rule improvement + safety constraints
-│       └── tech-stack.mdc           # Stack decisions and repo-wide best practices
-├── .github/
-│   └── workflows/
-│       └── playwright.yml           # CI pipeline: Playwright + agent on failure (planned)
-├── agent/
-│   ├── orchestrator.ts              # Main entry point (planned)
-│   ├── classifier.ts                # Claude classification (planned)
-│   ├── healer.ts                    # Generate fix + open PR (planned)
-│   ├── reporter.ts                  # Create GitHub Issue (planned)
-│   ├── context.ts                   # Extract failure context from artifacts (planned)
-│   └── types.ts                     # Shared agent types (planned)
-├── demo-app/                        # Next.js 14 TaskFlow demo app (planned)
-├── docs/
-│   ├── plan-00-general.md           # Phased roadmap and exit criteria
-│   ├── plan-01-demo-web-app.md      # TaskFlow demo app plan (Next.js + Vercel)
-│   ├── plan-02-playwright-pipeline.md # Playwright suite + GitHub Actions pipeline plan
-│   └── plan-03-ai-failure-agent.md  # AI failure agent plan (classify → act)
-├── tests/                           # Playwright test suite (planned)
-├── LICENSE                          # MIT license
-└── README.md                        # You are here
-```
-
-## Getting Started
-
-### Prerequisites
-
-- Node.js `20.x`
-- An Anthropic API key (for Claude)
-- A deployed demo app URL (Vercel)
-
-### Setup
-
-1. Clone the repository.
-
-```bash
-git clone https://github.com/YOUR_ORG/playwright-ai-qa-agent.git
-cd playwright-ai-qa-agent
-```
-
-1. Install dependencies.
-
-```bash
-npm ci
-```
-
-1. Set environment variables.
-
-
-| Variable            | Where                                 | Example                              |
-| ------------------- | ------------------------------------- | ------------------------------------ |
-| `ANTHROPIC_API_KEY` | local `.env` or GitHub Actions Secret | `YOUR_ANTHROPIC_API_KEY`             |
-| `DEMO_APP_URL`      | GitHub Actions Secret                 | `https://YOUR_VERCEL_URL.vercel.app` |
-
-
-1. Run the demo app locally.
+**Build and run locally** (Node 20+; from repository root after `git clone` and `npm ci`):
 
 ```bash
 cd demo-app
@@ -192,84 +83,70 @@ npm install
 npm run dev
 ```
 
-1. Run Playwright tests.
+Production build: `npm run build` and `npm run start` inside `demo-app/`, or from the repo root `npm run build` / `npm run start` (workspace scripts target `demo-app`).
 
-```bash
-npm run test:e2e:none
-```
+**Break modes** (also passed to Playwright as `QA_MODE`):
 
-### Run Playwright: `BASE_URL`, `QA_MODE`, and headed mode
+| Break Mode | What it simulates |
+| --- | --- |
+| `selector-change` | `data-testid` / DOM changes → automation locators break |
+| `logic-bug` | Wrong app behavior → product bug |
+| `slow-network` | Artificial latency → timing-sensitive failures |
+| `auth-break` | Login always fails |
 
-Playwright reads `BASE_URL` (see `tests/playwright.config.ts`). It defaults to `http://localhost:3000` for a local `npm run dev` in `demo-app/`. Set `BASE_URL` to your deployed origin to run against production **without** starting the app locally. Showcase tests also honor `QA_MODE` (`none`, `selector-change`, `logic-bug`, `auth-break`, `slow-network`).
+Optional **browser-only** preset: add `?qaMode=…` to the URL (`none`, `selector-change`, `logic-bug`, `slow-network`, `auth-break`). The value is stored in `sessionStorage` for that tab.
 
-Set `BASE_URL`, `QA_MODE`, and the npm script in one shell. Examples use this repo’s public demo URL (change both if you deploy elsewhere).
+## 2. Playwright test suite
 
-**PowerShell** (Windows default terminal: use `$env:` — Unix-style `VAR=value cmd` is **not** valid in PowerShell). From the **repository root**:
+- **Config:** `tests/playwright.config.ts`
+- **From repo root:** use `npm run … -w demo-app`
+- **From `demo-app/`:** same `npm run test:e2e` / `test:e2e:headed` without `-w demo-app`
+
+Execution parameters:
+
+| Variable | Role |
+| --- | --- |
+| `BASE_URL` | Target app (default `http://localhost:3000`). Set to the Vercel URL to test production without a local server. |
+| `QA_MODE` | Break mode: `none`, `selector-change`, `logic-bug`, `auth-break`, `slow-network`. |
+| `PLAYWRIGHT_SLOW_MO` | Optional milliseconds between actions (`slowMo`). Omit or `0` for full speed; use e.g. `400` with **headed** runs when recording. |
+
+Headless run: use `npm run test:e2e -w demo-app` instead of `test:e2e:headed`. **PowerShell** does not support `VAR=value cmd`; use `$env:VAR='…'` below.
+
+**PowerShell** — one session, all parameters, headed run against production:
 
 ```powershell
 $env:BASE_URL='https://playwright-ai-qa-agent.vercel.app'
 $env:QA_MODE='none'
+$env:PLAYWRIGHT_SLOW_MO='400'
 npm run test:e2e:headed -w demo-app
 ```
 
-Same variables for headless, local target, or `demo-app/` (after `cd demo-app`); only the last line changes:
-
-```powershell
-# Production — headless
-$env:BASE_URL='https://playwright-ai-qa-agent.vercel.app'
-$env:QA_MODE='none'
-npm run test:e2e -w demo-app
-
-# Local dev server (explicit base URL matches Playwright default)
-$env:BASE_URL='http://localhost:3000'
-$env:QA_MODE='none'
-npm run test:e2e:headed -w demo-app
-
-# From demo-app/
-$env:BASE_URL='https://playwright-ai-qa-agent.vercel.app'
-$env:QA_MODE='none'
-npm run test:e2e:headed
-```
-
-One-liner equivalent:
-
-```powershell
-$env:BASE_URL='https://playwright-ai-qa-agent.vercel.app'; $env:QA_MODE='none'; npm run test:e2e:headed -w demo-app
-```
-
-**Git Bash, WSL, macOS, or Linux** — prefix assignment works on one line:
+**Bash / Git Bash / WSL / macOS / Linux** — same parameters on one invocation:
 
 ```bash
-# Production — headless
-BASE_URL=https://playwright-ai-qa-agent.vercel.app QA_MODE=none npm run test:e2e -w demo-app
-
-# Production — headed
-BASE_URL=https://playwright-ai-qa-agent.vercel.app QA_MODE=none npm run test:e2e:headed -w demo-app
-
-# Local — omit BASE_URL or set BASE_URL=http://localhost:3000
-QA_MODE=none npm run test:e2e -w demo-app
-QA_MODE=none npm run test:e2e:headed -w demo-app
+BASE_URL=https://playwright-ai-qa-agent.vercel.app QA_MODE=none PLAYWRIGHT_SLOW_MO=400 npm run test:e2e:headed -w demo-app
 ```
 
-**Command Prompt (`cmd.exe`)**:
+For a **local** dev server, drop `BASE_URL` or set `BASE_URL=http://localhost:3000`. `$env:` / shell exports last for that terminal session. Built-in video is `retain-on-failure`; set `video: 'on'` in the config if you want a clip per test, or record the headed window externally.
 
-```bat
-set "BASE_URL=https://playwright-ai-qa-agent.vercel.app" && set "QA_MODE=none" && npm run test:e2e:headed -w demo-app
-```
+## 3. LLM failure agent
 
-The root shortcuts `npm run test:e2e:none`, `npm run test:e2e:selector-change`, and similar use **`cmd.exe`-style** `set "QA_MODE=..."` in `package.json` scripts; in PowerShell, prefer the `$env:` blocks above instead of those shortcuts, or run them from **cmd**.
+The agent reads Playwright output (by default `test-results/results.json`), builds failure context, and calls a configurable LLM to classify the failure.
 
-1. Trigger the agent manually (after a failing test run has produced `test-results/results.json`).
+**Setup**
+
+1. From the repository root: `npm ci` (workspaces install `agent/` and `demo-app/`).
+2. Add provider keys to `.env` as needed — see [Environment Variables](#environment-variables) (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`, Ollama URL, etc.).
+
+**Run** (after a test run has produced results; failures are the usual case):
 
 ```bash
 npm run agent
 ```
 
-### Run Agent With Explicit Results Path
+`npm run agent:local-results` (root) runs the agent with `AGENT_RESULTS_JSON_PATH` defaulting to `test-results/results.json` and debug logs; it uses **cmd** `set` syntax. In **PowerShell**, set `$env:AGENT_RESULTS_JSON_PATH`, `$env:AGENT_LOG_LEVEL='debug'`, then `npm run agent` instead.
 
-Use `AGENT_RESULTS_JSON_PATH` to point the agent to a specific results file.
-
-PowerShell:
+**PowerShell** — mock provider and explicit results path:
 
 ```powershell
 $env:AI_PROVIDER='mock'
@@ -277,72 +154,60 @@ $env:AGENT_RESULTS_JSON_PATH='test-results/results.json'
 npm run agent
 ```
 
-If your file is elsewhere:
-
-```powershell
-$env:AI_PROVIDER='mock'
-$env:AGENT_RESULTS_JSON_PATH='test-results/my-run/results.json'
-npm run agent
-```
-
-### Local Dev Provider Examples
-
-Mock provider (free, deterministic):
-
-```powershell
-$env:AI_PROVIDER='mock'
-npm run agent
-```
-
-Ollama provider (local):
+**PowerShell** — Ollama on `localhost`:
 
 ```powershell
 $env:AI_PROVIDER='ollama'
 $env:AI_MODEL='qwen2.5:7b'
 $env:OLLAMA_BASE_URL='http://127.0.0.1:11434'
-npm run agent:local-results
+$env:AGENT_LOG_LEVEL='debug'
+npm run agent
 ```
 
-### Run Ollama with Docker
+**Ollama in Docker** (optional): `docker build -t qa-agent-ollama ./ollama` then `docker run …` or `docker compose -f ollama/docker-compose.yml up --build -d`. See `ollama/` and the **NVIDIA / CPU-only** notes in that folder’s compose files. Point `OLLAMA_BASE_URL` at the container (`http://127.0.0.1:11434` by default).
 
-Build image:
+**Failure classification** (what the LLM returns):
 
-```bash
-docker build -t qa-agent-ollama ./ollama
-```
+| Category | Typical cause | Automated follow-up (when features are enabled in CI and confidence passes gates) |
+| --- | --- | --- |
+| `BROKEN_LOCATOR` | Locator / DOM mismatch (`data-testid`, etc.) | `AUTOMATION_BUG` issue; optional healer PR |
+| `REAL_BUG` | App logic / assertion failure | GitHub Issue with failure context |
+| `FLAKY` | Timing / ordering | Log only |
+| `ENV_ISSUE` | Missing env, connectivity, CI config | Log only |
 
-Run container and pre-pull a model (example: **8 CPUs**, **all NVIDIA GPUs**; omit `--gpus all` if you have no GPU):
+## 4. CI integration (GitHub Actions)
 
-```bash
-docker run --rm --gpus all --cpus=8 -p 11434:11434 -e OLLAMA_PULL_MODEL=qwen2.5:7b -e OLLAMA_KEEP_ALIVE=30m qa-agent-ollama
-```
+Workflow: [`.github/workflows/playwright.yml`](.github/workflows/playwright.yml).
 
-**NVIDIA GPU (Windows + Docker Desktop):** install the latest **Game Ready / Studio** driver for your card, enable **WSL2**, use **Docker Desktop** with the **WSL2** backend, and turn on **GPU support** in Docker Desktop settings. Then confirm the GPU is visible to Docker, for example: `docker run --rm --gpus all nvidia/cuda:12.0.0-base-ubuntu22.04 nvidia-smi`. After `qa-agent-ollama` is running, `docker exec qa-agent-ollama nvidia-smi` should list your GPU; Ollama logs should show CUDA inference (not only `library=cpu`). If `docker compose up` fails with a GPU / device-driver error and you need CPU-only, either remove the `deploy.resources.reservations.devices` block from `ollama/docker-compose.yml` (keep `limits.cpus`), or run: `docker compose -f ollama/docker-compose.yml -f ollama/docker-compose.cpu-only.yml up --build -d`.
+**Triggers**
 
-Run via terminal (detached):
+- Push to `main` / `develop`
+- Pull requests
+- **workflow_dispatch** (manual) with inputs: `qa_mode` (`none` | `selector-change` | `logic-bug` | `auth-break` | `slow-network`), optional toggles `enable_agent_reporter` / `enable_agent_healer`, optional `llm_provider` (`anthropic` \| `openai` \| `google`)
 
-The image builds with the same defaults (`11434`, `OLLAMA_PULL_MODEL=qwen2.5:7b`); models persist in the `ollama-data` volume. Compose allows **8 CPUs** by default and requests **NVIDIA GPUs** for inference; override CPUs with e.g. `$env:OLLAMA_DOCKER_CPUS='6'` before `docker compose` if you want to leave headroom for the host. Compose sets `**OLLAMA_KEEP_ALIVE=30m`** and `**shm_size: 2gb**`.
+**What runs**
 
-```bash
-docker compose -f ollama/docker-compose.yml up --build -d
-```
+1. `npm ci`, install Playwright Chromium (`npx playwright install chromium --with-deps`)
+2. `npx playwright test -c tests/playwright.config.ts` with `BASE_URL` set to the public demo and `QA_MODE` from the dispatch input (or `none`). Step uses `continue-on-error: true` so artifacts always upload when tests fail.
+3. Upload `test-results/` as an artifact; on pushes to `main` / `develop` (not on `pull_request` events), publish the HTML report to GitHub Pages — see workflow `if:` conditions.
+4. **Run AI Failure Agent** only if the Playwright step **failed** and the job was not cancelled — with `AGENT_ENABLE_IN_CI=true`, secrets for LLMs, and repo variables / dispatch inputs controlling issue and healer behavior.
+5. A final step **fails the job** if Playwright failed, so the check stays red while preserving reports and agent logs.
 
-Then run the agent with:
+Configure **GitHub Secrets** (e.g. `ANTHROPIC_API_KEY`, provider keys) and repository **Variables** as described in the workflow and in [Environment Variables](#environment-variables). Phase 1 may keep some agent write paths off by default; see `AGENT_ENABLE_IN_CI` and related flags in the tables below.
 
-```powershell
-$env:AI_PROVIDER='ollama'
-$env:AI_MODEL='qwen2.5:7b'
-$env:OLLAMA_BASE_URL='http://127.0.0.1:11434'
-npm run agent:local-results
-```
+**Manual run:** Actions → *Playwright + AI QA Agent* → *Run workflow*, choose `qa_mode` and optional agent/LLM inputs, then inspect artifacts and the agent step log.
 
-1. Optional: run tests with preselected QA mode.
+## Project structure
 
-```bash
-npm run test:e2e:selector-change
-npm run test:e2e:logic-bug
-npm run test:e2e:auth-break
-npm run test:e2e:slow-network
+```text
+.
+├── .cursor/rules/          # Editor / agent conventions
+├── .github/workflows/    # CI (Playwright + agent)
+├── agent/                  # LLM failure agent (TypeScript)
+├── demo-app/               # Next.js TaskFlow app
+├── tests/                  # Playwright config + showcase tests
+├── ollama/                 # Optional Docker image for local Ollama
+└── docs/                   # Design and phase plans
 ```
 
 ## Environment Variables
@@ -365,8 +230,9 @@ npm run test:e2e:slow-network
 | `AGENT_LOG_PRETTY` | No | `false` | Pretty-print logs with multiline context |
 | `GITHUB_API_URL` | No | `https://api.github.com` | GitHub API base URL override (useful for GHES) |
 | `DEMO_APP_URL` | Yes (CI) | n/a | Public URL of the deployed TaskFlow app used by Playwright in GitHub Actions |
-| `BASE_URL` | No | `http://localhost:3000` | Override target URL for local runs |
+| `BASE_URL` | No | `http://localhost:3000` | Playwright target (local dev server or deployed URL) |
 | `QA_MODE` | No | `none` | Optional mode for showcase test runs (`none`, `selector-change`, `logic-bug`, `auth-break`, `slow-network`) |
+| `PLAYWRIGHT_SLOW_MO` | No | unset | Milliseconds between browser operations (`launchOptions.slowMo`) for slower, easier-to-record headed runs |
 | `GITHUB_TOKEN` | Yes (CI, provided) | provided by Actions | Used for Issues/PRs GitHub API calls |
 | `GITHUB_REPOSITORY` | Yes (CI, provided) | provided by Actions | `owner/repo` used for GitHub API calls |
 | `GITHUB_RUN_ID` | Yes (CI, provided) | provided by Actions | Used to construct the CI run URL for linking in Issues/PRs |
@@ -431,17 +297,6 @@ npm run test:e2e:slow-network
 | `AGENT_OLLAMA_NUM_CTX_MAX`             | Optional      | Upper bound for Ollama `num_ctx` (default `16384`; trim prompts before raising)                                       |
 | `OLLAMA_API_KEY`                       | Optional      | Optional key if Ollama endpoint is behind auth/proxy                                                                  |
 
-
-## Running a Live Demo
-
-1. Open the GitHub Actions tab for the repository and select the Playwright workflow.
-2. Click “Run workflow” and choose a `qa_mode` value (for example `selector-change` to force internal locator failures in tasks/profile flows).
-3. Watch the Playwright step fail while still uploading the HTML report and JSON results artifact.
-4. Confirm the agent step runs after the failure and posts its classification in logs.
-5. For `BROKEN_LOCATOR`, expect a GitHub Issue titled with `AUTOMATION_BUG` and locator update guidance; when healer is enabled, also expect a linked PR that includes `Closes #<issue-number>`. For `REAL_BUG`, expect a GitHub Issue created with the error and CI run link.
-6. Open the workflow run artifacts and view `test-results/html-report` to show the failure evidence alongside the agent output.
-
-Note: in Phase 1, agent execution is intentionally dev-focused and disabled in CI by default (`AGENT_ENABLE_IN_CI=false`).
 
 ## Roadmap
 
