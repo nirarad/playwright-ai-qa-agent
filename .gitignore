@@ -9,6 +9,7 @@ next-env.d.ts
 # Playwright
 test-results/
 playwright-report/
+venv/
 
 # logs
 npm-debug.log*

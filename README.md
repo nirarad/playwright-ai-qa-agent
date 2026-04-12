@@ -198,6 +198,30 @@ npm run dev
 npm run test:e2e:none
 ```
 
+### Run Playwright: `BASE_URL`, `QA_MODE`, and headed mode
+
+Playwright reads `BASE_URL` (see `tests/playwright.config.ts`). It defaults to `http://localhost:3000` for a local `npm run dev` in `demo-app/`. Set `BASE_URL` to your deployed origin to run against production **without** starting the app locally. Showcase tests also honor `QA_MODE` (`none`, `selector-change`, `logic-bug`, `auth-break`, `slow-network`).
+
+Set `BASE_URL`, `QA_MODE`, and the npm script in one shell; examples use this repo’s public demo URL (change both if you deploy elsewhere). From the **repository root**:
+
+```bash
+# Production — headless (all params on one run)
+BASE_URL=https://playwright-ai-qa-agent.vercel.app QA_MODE=none npm run test:e2e -w demo-app
+
+# Production — headed (same params; visible browser)
+BASE_URL=https://playwright-ai-qa-agent.vercel.app QA_MODE=none npm run test:e2e:headed -w demo-app
+
+# Local dev server — same pattern; omit BASE_URL or set BASE_URL=http://localhost:3000
+QA_MODE=none npm run test:e2e -w demo-app
+QA_MODE=none npm run test:e2e:headed -w demo-app
+
+# From demo-app/ (after cd demo-app) — same env vars, workspace flag not used
+BASE_URL=https://playwright-ai-qa-agent.vercel.app QA_MODE=none npm run test:e2e
+BASE_URL=https://playwright-ai-qa-agent.vercel.app QA_MODE=none npm run test:e2e:headed
+```
+
+The root shortcuts `npm run test:e2e:none`, `npm run test:e2e:selector-change`, and similar use **Windows cmd** (`set "QA_MODE=..."`). On Git Bash, WSL, or macOS/Linux, use the `BASE_URL=... QA_MODE=... npm run ...` form in the block above.
+
 1. Trigger the agent manually (after a failing test run has produced `test-results/results.json`).
 
 ```bash
