@@ -14,9 +14,7 @@ When an end-to-end test fails, teams lose time deciding whether the problem is a
 
 Headed Playwright run against TaskFlow with slow motion so the flow is easy to follow.
 
-<video src="videos/playwright-demo.mp4" controls playsinline width="100%"></video>
-
-[Open video file](videos/playwright-demo.mp4)
+![Headed Playwright run against TaskFlow (slow motion)](videos/playwright-demo.gif)
 
 ## Architecture Diagram
 
