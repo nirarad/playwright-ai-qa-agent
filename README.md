@@ -16,6 +16,8 @@ Headed Playwright run against TaskFlow with slow motion so the flow is easy to f
 
 ![Headed Playwright run against TaskFlow (slow motion)](videos/playwright-demo.gif)
 
+**Example agent-created issue:** The failure agent can open GitHub Issues from Playwright failures. One example from this repo: [**[BUG] Task creation despite empty input** (Issue #74)](https://github.com/nirarad/playwright-ai-qa-agent/issues/74) — filed when the showcase test `empty input does not create a task` failed (the UI created a task despite empty input; classified as `REAL_BUG`).
+
 ## Architecture Diagram
 
 ```text
